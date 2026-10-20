@@ -64,6 +64,18 @@ def all_results():
     return {"jira": jira_result(), "github": github_result(), "machine": machine_result()}
 
 
+class WorkerTotalTests(unittest.TestCase):
+    def test_counts_worker_units_and_is_unknown_without_them(self):
+        from controlroom.assembler import _worker_total
+
+        self.assertEqual(
+            _worker_total({"aiflow-worker@1.service": "active", "aiflow-worker@2.service": "active", "aiflow-web.service": "active"}),
+            2,
+        )
+        self.assertIsNone(_worker_total({"aiflow-web.service": "active"}))
+        self.assertIsNone(_worker_total(None))
+
+
 class AssembleTest(unittest.TestCase):
     def test_lifetime_usage_totals_are_unknown_not_truncated(self):
         results = all_results()
@@ -95,6 +107,7 @@ class AssembleTest(unittest.TestCase):
         self.assertEqual(snapshot["timeline"]["runs"][0]["start"], EPOCH - 600 - 240)
         self.assertEqual(snapshot["timeline"]["merges"][0]["key"], "JOOCR-5")
         self.assertEqual(snapshot["machine"]["workersBusy"], 1)
+        self.assertIsNone(snapshot["machine"]["workersTotal"])
         self.assertEqual(snapshot["machine"]["host"], "Workstation")
         self.assertEqual(snapshot["machine"]["runs"][0]["name"], "ci")
         self.assertEqual(

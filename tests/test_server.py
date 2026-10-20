@@ -125,6 +125,13 @@ class FooterAssetTests(unittest.TestCase):
         self.assertIn('id="collector-version"', page)
         self.assertIn('src="footer.js"', page)
         self.assertNotIn("<script>", page)
+        # The footer is added to the real Control Room page, which keeps its own assets.
+        for asset in ('href="style.css"', 'src="lib.js"', 'src="app.js"', 'id="kpis"'):
+            self.assertIn(asset, page)
+        lib = (self.WEB / "lib.js").read_text(encoding="utf-8")
+        self.assertIn("STALE_AFTER_S = 180, OLD_AFTER_S = 900", lib)
+        self.assertIn("STALE_SECONDS = 180", script)
+        self.assertIn("OLD_SECONDS = 900", script)
         self.assertIn("meta.asOf", script)
         self.assertIn("collector.version", script)
         self.assertIn("/api/snapshot", script)

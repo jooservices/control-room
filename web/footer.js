@@ -2,8 +2,8 @@
 (function () {
   'use strict';
   var REFRESH_MS = 30000;
-  var STALE_SECONDS = 900;
-  var OLD_SECONDS = 3600;
+  var STALE_SECONDS = 180;
+  var OLD_SECONDS = 900;
 
   function formatLag(seconds) {
     if (seconds < 90) return Math.round(seconds) + 's';
