@@ -24,7 +24,7 @@ FLOW_STATUSES = (
     "Ready to merge",
     "Blocked",
 )
-MAX_EVENTS = 80
+MAX_EVENTS = 200
 
 # AI agents shown on the page: id -> (name, model, effort, roles). Same table
 # as the prototype collector.
@@ -419,7 +419,15 @@ def _apply_events(snapshot, good, now) -> None:
         if event.get("kind") not in refreshed
     ]
     if "jira" in good:
-        events.extend(good["jira"][1])
+        for event in good["jira"][1]:
+            key = event.get("key")
+            events.append(
+                {
+                    **event,
+                    "project": _project_key(key),
+                    "link": {"type": "ticket", "key": key},
+                }
+            )
     if "machine" in good:
         base = good["machine"].get("now", int(now.timestamp()))
         for run in good["machine"].get("usage") or []:
@@ -431,30 +439,58 @@ def _apply_events(snapshot, good, now) -> None:
             )
             if not finished:
                 text += " (failed)"
+            key = _run_key(run)
             events.append(
                 {
                     "at": iso(dt.datetime.fromtimestamp(run["end"], dt.timezone.utc)),
                     "kind": "run" if finished else "badrun",
-                    "key": _run_key(run),
+                    "key": key,
+                    "project": _project_key(key),
                     "text": text,
+                    "link": {"type": "ai", "key": _ai_key(run.get("ai"))},
                 }
             )
     if "github" in good:
-        for data in good["github"]["projects"].values():
+        for project, data in good["github"]["projects"].items():
             for pr in data.get("mergedPRs", []):
                 if _within(pr.get("mergedAt"), now, 86400):
+                    key = _ticket_key(pr["title"], project)
                     events.append(
                         {
                             "at": pr["mergedAt"],
                             "kind": "merge",
-                            "key": None,
+                            "key": key,
+                            "project": project,
                             "text": "{} PR #{} merged: {}".format(
                                 data["repo"].split("/")[-1],
                                 pr["number"],
                                 pr["title"][:70],
                             ),
                             "url": pr["url"],
+                            "link": {
+                                "type": "ticket" if key else "project",
+                                "key": key or project,
+                            },
                         }
                     )
     events.sort(key=lambda event: event["at"], reverse=True)
     snapshot["events"] = {"list": events[:MAX_EVENTS]}
+
+
+def _project_key(ticket_key: object) -> str | None:
+    if not isinstance(ticket_key, str):
+        return None
+    project, separator, issue = ticket_key.partition("-")
+    if separator and project and issue:
+        return project
+    return None
+
+
+def _ai_key(name: object) -> str:
+    if not isinstance(name, str) or not name:
+        return "unknown"
+    folded = name.casefold()
+    for key, details in AGENTS.items():
+        if details[0].casefold() == folded:
+            return key
+    return folded
