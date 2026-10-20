@@ -1,4 +1,5 @@
 import http.client
+import json
 import os
 import tempfile
 import threading
@@ -83,6 +84,27 @@ class ServerTests(unittest.TestCase):
         status, _, body = self.request("GET", "/healthz")
         self.assertEqual(status, 503)
         self.assertIn(b'"ageSeconds": 31', body)
+
+    def test_healthz_detail_returns_collector_meta(self):
+        meta = {"asOf": "2026-10-20T12:00:00Z", "ok": {"jira": False},
+                "errorAt": {"jira": "2026-10-20T12:00:00Z"},
+                "collector": {"version": "abc1234", "loopCount": 7,
+                              "lastLoopSeconds": 1.5, "sourceErrors": {"jira": 2}}}
+        self.snapshot.write_text(json.dumps({"meta": meta}), encoding="utf-8")
+        status, response, body = self.request("GET", "/healthz?detail=1")
+        report = json.loads(body)
+        self.assertEqual(status, 200)
+        self.assertEqual(response.getheader("Cache-Control"), "no-store")
+        self.assertTrue(report["ok"])
+        self.assertEqual(report["collector"], meta["collector"])
+        self.assertEqual(report["sources"], {"jira": False})
+        self.assertEqual(report["asOf"], meta["asOf"])
+        self.assertNotIn("collector", json.loads(self.request("GET", "/healthz")[2]))
+
+    def test_healthz_detail_tolerates_snapshot_without_meta(self):
+        status, _, body = self.request("GET", "/healthz?detail=1")
+        self.assertEqual(status, 200)
+        self.assertIsNone(json.loads(body)["collector"])
 
     def test_path_traversal_returns_404(self):
         for path in ("/../secret.txt", "/%2e%2e/secret.txt", "/..%2fsecret.txt",

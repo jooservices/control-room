@@ -289,6 +289,35 @@ class RunOnceTest(unittest.TestCase):
             self.assertEqual(len(store.query("machine.load")), 1)
             self.assertEqual(len(store.query("flow.done24h")), 2)
 
+    def test_meta_collector_counts_loops_and_source_errors(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Config(
+                jira_site="https://x.example", jira_user="u", jira_token="t",
+                github_repos=("a/b",), data_dir=Path(tmp), interval_seconds=45,
+            )
+            first = collector.run_once(
+                config, now=NOW, collect=lambda *_: all_results(), version="abc1234"
+            )["meta"]["collector"]
+            self.assertEqual(first["version"], "abc1234")
+            self.assertEqual(first["loopCount"], 1)
+            self.assertGreaterEqual(first["lastLoopSeconds"], 0)
+            self.assertEqual(first["sourceErrors"],
+                             {"jira": 0, "github": 0, "machine": 0})
+
+            failing = {**all_results(), "github": OSError("x")}
+            for step in (1, 2):
+                second = collector.run_once(
+                    config, now=NOW + dt.timedelta(seconds=45 * step),
+                    collect=lambda *_: failing, version="abc1234",
+                )["meta"]["collector"]
+            self.assertEqual(second["loopCount"], 3)
+            self.assertEqual(second["sourceErrors"]["github"], 2)
+            self.assertEqual(second["sourceErrors"]["jira"], 0)
+
+    def test_git_head_is_short_hash_or_none(self):
+        head = collector.git_head()
+        self.assertTrue(head is None or 4 <= len(head) <= 40)
+
     def test_default_interval_is_45_seconds(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = Path(tmp) / ".env"
