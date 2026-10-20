@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
+import ipaddress
 import re
 from urllib.parse import urlsplit
 
@@ -18,8 +19,8 @@ class ConfigurationError(ValueError):
 class Config:
     """Validated settings loaded from a dotenv-style file.
 
-    Jira credentials are excluded from the representation so the configuration
-    object can be inspected safely in diagnostics.
+    Authentication credentials are excluded from the representation so the
+    configuration object can be inspected safely in diagnostics.
     """
 
     jira_site: str
@@ -31,6 +32,10 @@ class Config:
     github_project_repos: dict[str, str] = field(default_factory=dict)
     bind_host: str | None = None  # None: the server picks the machine's LAN address
     port: int = DEFAULT_PORT
+    openobserve_url: str | None = None
+    openobserve_org: str = "default"
+    openobserve_user: str = field(default="", repr=False)
+    openobserve_password: str = field(default="", repr=False)
 
 
 _REQUIRED_VARIABLES = (
@@ -156,6 +161,51 @@ def load_config(env_file: str | Path = ".env") -> Config:
     if not 0 <= port <= 65535:
         raise ConfigurationError("PORT must be between 0 and 65535")
 
+    openobserve_url = values.get("OPENOBSERVE_URL", "").strip().rstrip("/")
+    openobserve_user = values.get("OPENOBSERVE_USER", "").strip()
+    openobserve_password = values.get("OPENOBSERVE_PASSWORD", "").strip()
+    openobserve_org = values.get("OPENOBSERVE_ORG", "default").strip() or "default"
+    openobserve_credentials = {
+        "OPENOBSERVE_URL": openobserve_url,
+        "OPENOBSERVE_USER": openobserve_user,
+        "OPENOBSERVE_PASSWORD": openobserve_password,
+    }
+    if any(openobserve_credentials.values()) and not all(
+        openobserve_credentials.values()
+    ):
+        missing_openobserve = [
+            name for name, value in openobserve_credentials.items() if not value
+        ]
+        raise ConfigurationError(
+            "Missing OpenObserve configuration: " + ", ".join(missing_openobserve)
+        )
+    if openobserve_url:
+        try:
+            parsed_openobserve = urlsplit(openobserve_url)
+            openobserve_hostname = parsed_openobserve.hostname
+            openobserve_port = parsed_openobserve.port
+        except ValueError:
+            raise ConfigurationError(
+                "OPENOBSERVE_URL must be a valid HTTP or HTTPS URL"
+            ) from None
+        if (
+            parsed_openobserve.scheme not in {"http", "https"}
+            or not parsed_openobserve.netloc
+            or not openobserve_hostname
+            or openobserve_port == 0
+            or parsed_openobserve.username
+            or parsed_openobserve.password
+            or parsed_openobserve.query
+            or parsed_openobserve.fragment
+        ):
+            raise ConfigurationError("OPENOBSERVE_URL must be an HTTP or HTTPS URL")
+        if not is_secure_openobserve_url(openobserve_url):
+            raise ConfigurationError(
+                "OPENOBSERVE_URL must use HTTPS unless it targets a loopback host"
+            )
+    if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_-]*", openobserve_org):
+        raise ConfigurationError("OPENOBSERVE_ORG must be a valid organization name")
+
     return Config(
         jira_site=jira_site,
         jira_user=values["JIRA_READ_ONLY_USER"].strip(),
@@ -166,4 +216,27 @@ def load_config(env_file: str | Path = ".env") -> Config:
         github_project_repos=github_project_repos,
         bind_host=bind_host,
         port=port,
+        openobserve_url=openobserve_url or None,
+        openobserve_org=openobserve_org,
+        openobserve_user=openobserve_user,
+        openobserve_password=openobserve_password,
     )
+
+
+def is_secure_openobserve_url(url: str) -> bool:
+    """Allow credentials only over HTTPS, or HTTP to a loopback host."""
+    try:
+        parsed = urlsplit(url)
+        host = parsed.hostname
+    except ValueError:
+        return False
+    if parsed.scheme == "https":
+        return True
+    if parsed.scheme != "http" or not host:
+        return False
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False

@@ -12,7 +12,7 @@ from typing import Mapping
 from controlroom.analytics import eta
 from controlroom.model import FLOW_STATUSES, HOLD_LABEL, empty_snapshot
 
-SOURCES = ("jira", "github", "machine")
+SOURCES = ("jira", "github", "machine", "events")
 
 # Statuses that count as in flight (same list as the prototype collector).
 MAX_EVENTS = 200
@@ -41,6 +41,7 @@ _EVENT_KINDS = {
     "jira": {"status"},
     "machine": {"run", "badrun"},
     "github": {"merge"},
+    "events": set(),
 }
 
 
@@ -58,6 +59,23 @@ def source_failure(name: str, result: object) -> str | None:
     return None
 
 
+def _reset_event_metrics(snapshot: dict[str, object]) -> None:
+    """Drop the metrics owned by the omitted ``events`` source."""
+    empty = empty_snapshot()
+    snapshot["flow"]["statusMedianMinutes"] = empty["flow"]["statusMedianMinutes"]
+    snapshot["ai"]["usageByRole"] = empty["ai"]["usageByRole"]
+
+
+def _backfill_event_keys(snapshot: dict[str, object]) -> None:
+    """Add event keys that a snapshot restored from an older version lacks."""
+    empty = empty_snapshot()
+    for section, key in (("flow", "statusMedianMinutes"), ("ai", "usageByRole")):
+        if not isinstance(snapshot.get(section), dict):
+            snapshot[section] = empty[section]
+        elif key not in snapshot[section]:
+            snapshot[section][key] = empty[section][key]
+
+
 def assemble(
     results: Mapping[str, object],
     previous: Mapping[str, object] | None,
@@ -71,7 +89,7 @@ def assemble(
     raised. Expected results: ``jira`` is ``(projects_document, status_events)``,
     ``github`` is the dict of ``sources.github.collect`` and ``machine`` is the
     dict of ``sources.machine.collect``. Sources missing from ``results`` count
-    as failed. ``machine_history`` replaces ``machine.history`` when given.
+    as failed, except the optional ``events`` source. ``machine_history`` replaces ``machine.history`` when given.
 
     ``meta.ok[source]`` is false for a failed source and ``meta.errorAt[source]``
     holds the time of its latest failure. ``meta.asOf`` moves only when at least
@@ -82,6 +100,7 @@ def assemble(
         for name, value in previous.items():
             if name != "version" and name in snapshot:
                 snapshot[name] = copy.deepcopy(value)
+    _backfill_event_keys(snapshot)
     old_meta = snapshot["meta"] if isinstance(snapshot["meta"], dict) else {}
     now_iso = iso(now)
     epoch = int(now.timestamp())
@@ -90,6 +109,10 @@ def assemble(
     ok: dict[str, bool] = {}
     error_at = dict(old_meta.get("errorAt") or {})
     for name in SOURCES:
+        if name == "events" and name not in results:
+            error_at.pop(name, None)  # OpenObserve is optional: omitted is not a failure
+            _reset_event_metrics(snapshot)
+            continue
         result = results.get(name, RuntimeError("missing"))
         failure = source_failure(name, result)
         ok[name] = failure is None
@@ -109,6 +132,8 @@ def assemble(
     _apply_done_by_ai(snapshot, good, now)
     if "machine" in good:
         _apply_ai(snapshot, good["machine"])
+    if "events" in good:
+        _apply_event_metrics(snapshot, good["events"])
     _apply_machine(snapshot, good, machine_history)
     _apply_project_etas(snapshot, good, flow_projects)
     _apply_timeline(snapshot, good, flow_projects, now, epoch)
@@ -319,7 +344,22 @@ def _apply_ai(snapshot, raw) -> None:
                 "badAll": None,
             }
         )
-    snapshot["ai"] = {"agents": agents, "versions": {}, "usable": {}}
+    usage_by_role = snapshot["ai"].get("usageByRole") or {
+        "24h": [], "7d": [], "30d": []
+    }
+    snapshot["ai"] = {
+        "agents": agents,
+        "versions": {},
+        "usable": {},
+        "usageByRole": usage_by_role,
+    }
+
+
+def _apply_event_metrics(snapshot, raw) -> None:
+    snapshot["flow"]["statusMedianMinutes"] = copy.deepcopy(
+        raw["statusMedianMinutes"]
+    )
+    snapshot["ai"]["usageByRole"] = copy.deepcopy(raw["usageByRole"])
 
 
 def _worker_total(services) -> int | None:

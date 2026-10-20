@@ -9,6 +9,14 @@ class SnapshotModelTest(unittest.TestCase):
 
         self.assertEqual(snapshot["version"], SNAPSHOT_VERSION)
         self.assertEqual(set(snapshot) - {"version"}, set(DOCUMENT_NAMES))
+        self.assertEqual(
+            snapshot["flow"]["statusMedianMinutes"],
+            {"24h": {}, "7d": {}, "30d": {}},
+        )
+        self.assertEqual(
+            snapshot["ai"]["usageByRole"],
+            {"24h": [], "7d": [], "30d": []},
+        )
         for name in DOCUMENT_NAMES:
             self.assertIs(type(snapshot[name]), dict)
 
