@@ -12,6 +12,18 @@ from typing import Mapping
 from controlroom.model import empty_snapshot
 
 SOURCES = ("jira", "github", "machine")
+
+# Statuses that count as in flight (same list as the prototype collector).
+FLOW_STATUSES = (
+    "To Do",
+    "In Progress",
+    "In Review",
+    "Review passed",
+    "In QA",
+    "Human review",
+    "Ready to merge",
+    "Blocked",
+)
 MAX_EVENTS = 80
 
 # AI agents shown on the page: id -> (name, model, effort, roles). Same table
@@ -102,6 +114,7 @@ def assemble(
 
     _apply_projects(snapshot, good)
     _apply_flow(snapshot, good, flow_projects, now)
+    _apply_inflight(snapshot, good, flow_projects)
     if "machine" in good:
         _apply_ai(snapshot, good["machine"])
     _apply_machine(snapshot, good, machine_history)
@@ -182,6 +195,47 @@ def _apply_flow(snapshot, good, flow_projects, now) -> None:
             for pr in good["github"]["projects"].get(key, {}).get("mergedPRs", [])
             if _within(pr.get("mergedAt"), now, 86400)
         )
+
+
+def _apply_inflight(snapshot, good, flow_projects) -> None:
+    """Fill ``flow.inflight`` from Jira active rows and machine leases.
+
+    Fields no source collects (labels, agent, PR link, role AIs) are ``None``
+    rather than invented values.
+    """
+    flow = snapshot["flow"]
+    leases = None
+    if "machine" in good:
+        leases = good["machine"].get("leases") or {}
+    if "jira" in good:
+        leases = leases if leases is not None else snapshot["machine"].get("leases") or {}
+        rows = []
+        for project in good["jira"][0]["list"]:
+            if project["key"] not in flow_projects:
+                continue
+            for ticket in project["active"]:
+                if ticket["status"] not in FLOW_STATUSES:
+                    continue
+                rows.append(
+                    {
+                        "key": ticket["key"],
+                        "project": project["key"],
+                        "summary": ticket["summary"],
+                        "status": ticket["status"],
+                        "priority": ticket["priority"],
+                        "labels": None,
+                        "agent": None,
+                        "updated": ticket["updated"],
+                        "lease": leases.get(ticket["key"]),
+                        "pr": None,
+                        "devAi": None,
+                        "reviewerAi": None,
+                    }
+                )
+        flow["inflight"] = rows
+    elif leases is not None and isinstance(flow.get("inflight"), list):
+        for row in flow["inflight"]:
+            row["lease"] = leases.get(row["key"])
 
 
 def _minutes(rows) -> float:

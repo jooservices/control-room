@@ -128,6 +128,42 @@ class AssembleTest(unittest.TestCase):
         self.assertEqual(second["meta"]["errorAt"], {})
 
 
+class FlowStateTest(unittest.TestCase):
+    def results_with_active(self):
+        jira = jira_result()
+        jira[0]["list"][0]["active"] = [
+            {"key": "JOOCR-5", "type": "Task", "status": "In Progress", "priority": "High",
+             "summary": "s", "parent": None, "updated": "2026-10-20T11:00"},
+            {"key": "JOOCR-6", "type": "Task", "status": "Backlog", "priority": "Low",
+             "summary": "b", "parent": None, "updated": "2026-10-20T10:00"},
+        ]
+        return {"jira": jira, "github": github_result(), "machine": machine_result()}
+
+    def test_inflight_comes_from_jira_active_and_machine_leases(self):
+        flow = assemble(self.results_with_active(), None, now=NOW)["flow"]
+        self.assertEqual([row["key"] for row in flow["inflight"]], ["JOOCR-5"])
+        self.assertEqual(flow["inflight"][0]["lease"], "x")
+        self.assertEqual(flow["inflight"][0]["status"], "In Progress")
+        self.assertIsNone(flow["inflight"][0]["pr"])
+
+    def test_uncollected_flow_fields_are_unknown_not_zero(self):
+        flow = assemble(self.results_with_active(), None, now=NOW)["flow"]
+        for name in ("doneByAiLast24h", "reworkLast24h", "paused", "qaslot"):
+            self.assertIsNone(flow[name])
+        self.assertIsNone(flow["cycle"]["n"])
+
+    def test_machine_only_update_refreshes_leases_on_kept_rows(self):
+        first = assemble(self.results_with_active(), None, now=NOW)
+        machine = machine_result()
+        machine["leases"] = {}
+        second = assemble(
+            {"jira": RuntimeError("down"), "github": github_result(), "machine": machine},
+            first, now=NOW,
+        )
+        self.assertEqual([r["key"] for r in second["flow"]["inflight"]], ["JOOCR-5"])
+        self.assertIsNone(second["flow"]["inflight"][0]["lease"])
+
+
 class HistoryTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
