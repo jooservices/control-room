@@ -27,6 +27,15 @@
     el.hidden = !bad.length; el.textContent = bad.length ? 'Last collection failed for ' + bad.map(k => SRC[k] || k).join(', ') + '; its figures may be stale.' : '';
   }
 
+  /* ---------- alerts: rules are computed by the collector, the page only shows them ---------- */
+  const ALERT_RULE = { collector: 'Collector', heartbeat: 'Worker', ai: 'AI', ci: 'CI', blocked: 'Blocked' };
+  function alerts() {
+    const el = $('#alerts'), rows = (DOCS.alerts && DOCS.alerts.list) || [];
+    el.hidden = !rows.length;
+    el.innerHTML = rows.map(a => '<div class="alert"><span>' + esc(ALERT_RULE[a.rule] || a.rule) + '</span><button type="button" data-target-type="' + esc((a.link || {}).type) + '" data-target-key="' + esc((a.link || {}).key) + '">' + esc(a.text) + '</button></div>').join('');
+    el.querySelectorAll('[data-target-type]').forEach(b => { b.onclick = () => openTarget(b.dataset.targetType, b.dataset.targetKey); });
+  }
+
   /* ---------- KPIs ---------- */
   function kpis() {
     const f = DOCS.flow, m = DOCS.machine; const inf = f.inflight; const by = s => inf.filter(t => t.status === s).length;
@@ -211,7 +220,7 @@
 
   $('#theme').onclick = () => { const cur = document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'); document.documentElement.dataset.theme = cur === 'dark' ? 'light' : 'dark'; };
   function render() {
-    [liveBadge, sources, kpis, timeline, funnel, projectRows, aiTable, machine, eventFilters, feed].forEach(f => { try { f(); } catch (e) { console.error(f.name, e); } });
+    [liveBadge, sources, alerts, kpis, timeline, funnel, projectRows, aiTable, machine, eventFilters, feed].forEach(f => { try { f(); } catch (e) { console.error(f.name, e); } });
     if (sel) { try { const keep = $('#drawer').scrollTop; renderDrawer(); $('#drawer').scrollTop = keep; } catch (e) { console.error('drawer', e); } }
   }
   liveBadge();

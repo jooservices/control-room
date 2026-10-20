@@ -1,6 +1,6 @@
 """Versioned plain-dict snapshot shape used by the prototype page.
 
-The root has ``version`` plus seven documents. ``projects.list`` contains rows
+The root has ``version`` plus eight documents. ``projects.list`` contains rows
 with key, name, repo, board, total, counts, epics, active, recent, doneLast24h,
 mergedPRs, openPRs, lastUpdate, onFlow, eta, etaSamples, etaExcluded, and
 etaCycleCache. The cache maps completed ticket keys to observed cycle minutes
@@ -25,6 +25,9 @@ kind, key, project, and text, plus a ``link`` object with ``type`` (ticket,
 project, or ai) and ``key``; merge events also have the source pull request
 ``url``. Events are newest first and capped at 200.
 
+``alerts.list`` rows (see ``controlroom/alerts.py``) have rule, subject, text, and a ``link`` object
+with ``type`` (ticket, project, or ai) and ``key``.
+
 ``machine`` contains host, cpus, load, mem, disk, uptimeH, containers, services,
 heartbeatAges, redis, code, leases, workersBusy, workersTotal, history, and runs. History rows
 have t, load, and mem; CI run rows have name, url, status, and mins. ``meta``
@@ -40,7 +43,7 @@ that source has been read successfully.
 """
 
 SNAPSHOT_VERSION = 1
-DOCUMENT_NAMES = ("projects", "flow", "ai", "timeline", "events", "machine", "meta")
+DOCUMENT_NAMES = ("projects", "flow", "ai", "timeline", "events", "alerts", "machine", "meta")
 
 FLOW_STATUSES = (
     "To Do",
@@ -76,6 +79,7 @@ def empty_snapshot() -> dict[str, object]:
         "ai": {"agents": [], "versions": {}, "usable": {}},
         "timeline": {"runs": [], "merges": [], "now": 0},
         "events": {"list": []},
+        "alerts": {"list": []},
         "machine": {
             "host": "",
             "cpus": None,

@@ -442,6 +442,7 @@ def _active_ticket(issue: dict[str, object]) -> dict[str, object]:
         "summary": (fields.get("summary") or "")[:100],
         "parent": parent.get("key") if isinstance(parent, dict) else None,
         "updated": (fields.get("updated") or "")[:16],
+        "updatedAt": _format_utc(_parse_jira_datetime(fields["updated"])) if fields.get("updated") else None,
         "labels": list(fields.get("labels") or []),
     }
 
