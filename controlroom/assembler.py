@@ -72,7 +72,7 @@ def assemble(
     raised. Expected results: ``jira`` is ``(projects_document, status_events)``,
     ``github`` is the dict of ``sources.github.collect`` and ``machine`` is the
     dict of ``sources.machine.collect``. Sources missing from ``results`` count
-    as failed. ``machine_history`` replaces ``machine.history`` when given.
+    as failed, except the optional ``events`` source. ``machine_history`` replaces ``machine.history`` when given.
 
     ``meta.ok[source]`` is false for a failed source and ``meta.errorAt[source]``
     holds the time of its latest failure. ``meta.asOf`` moves only when at least
@@ -91,6 +91,8 @@ def assemble(
     ok: dict[str, bool] = {}
     error_at = dict(old_meta.get("errorAt") or {})
     for name in SOURCES:
+        if name == "events" and name not in results:
+            continue  # OpenObserve is optional: an omitted source is not a failure
         result = results.get(name, RuntimeError("missing"))
         failure = source_failure(name, result)
         ok[name] = failure is None

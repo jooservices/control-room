@@ -39,17 +39,17 @@ class ParseEventsTest(unittest.TestCase):
         self.assertEqual(
             result["statusMedianMinutes"],
             {
-                "24h": {"In Progress": 120.0, "Review": 210.0},
+                "24h": {"In Progress": 120.0, "Review": 420.0},
                 "7d": {
                     "In Progress": 120.0,
                     "Ready": 1440.0,
-                    "Review": 210.0,
+                    "Review": 420.0,
                 },
                 "30d": {
                     "Build": 1440.0,
                     "In Progress": 120.0,
                     "Ready": 1440.0,
-                    "Review": 210.0,
+                    "Review": 420.0,
                 },
             },
         )

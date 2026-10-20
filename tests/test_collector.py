@@ -111,6 +111,9 @@ class CollectSourcesTest(unittest.TestCase):
             github_repos=("owner/repo",),
             data_dir=Path("data"),
             interval_seconds=45,
+            openobserve_url="https://oo.example.test",
+            openobserve_user="user",
+            openobserve_password="secret",
         )
         with (
             patch(
@@ -134,6 +137,30 @@ class CollectSourcesTest(unittest.TestCase):
 
         event_source.assert_called_once_with(config, now=NOW)
         self.assertEqual(results["events"], events_result())
+
+
+    def test_collect_sources_skips_unconfigured_openobserve(self):
+        config = Config(
+            jira_site="https://jira.example.test",
+            jira_user="user",
+            jira_token="token",
+            github_repos=("owner/repo",),
+            data_dir=Path("data"),
+            interval_seconds=45,
+        )
+        with (
+            patch("controlroom.collector.machine.collect", return_value={}),
+            patch("controlroom.collector.jira.collect_jira", return_value=jira_result()),
+            patch("controlroom.collector.github.collect", return_value=github_result()),
+            patch("controlroom.collector.events.collect") as event_source,
+        ):
+            results = collector.collect_sources(config, None, now=NOW)
+
+        event_source.assert_not_called()
+        self.assertNotIn("events", results)
+        snapshot = assemble(results, None, now=NOW)
+        self.assertNotIn("events", snapshot["meta"]["ok"])
+        self.assertNotIn("events", snapshot["meta"]["errorAt"])
 
 
 class WorkerTotalTests(unittest.TestCase):

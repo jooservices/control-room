@@ -183,13 +183,13 @@ def _payload(row: Mapping[str, object]) -> dict[str, object]:
 
 def _event_kind(row: Mapping[str, object]) -> str:
     for name in (
+        "event",
         "event_type",
         "event.name",
         "event_name",
         "kind",
         "type",
         "name",
-        "event",
     ):
         value = row.get(name)
         if isinstance(value, str) and value.strip():
@@ -296,7 +296,11 @@ def _status_intervals(events: list[dict[str, object]]) -> list[dict[str, object]
 
     intervals = []
     for ticket_events in by_ticket.values():
-        ordered = sorted(ticket_events, key=lambda event: event["at"])
+        ordered = []
+        for event in sorted(ticket_events, key=lambda event: event["at"]):
+            # A repeated status event is a duplicate, not a new stay.
+            if not ordered or ordered[-1]["status"] != event["status"]:
+                ordered.append(event)
         for previous, following in zip(ordered, ordered[1:]):
             seconds = (following["at"] - previous["at"]).total_seconds()
             if seconds > 0:

@@ -90,7 +90,8 @@ def collect_sources(
         ),
     )
     run("github", lambda: github.collect(config.github_project_repos, now=now))
-    run("events", lambda: events.collect(config, now=now))
+    if config.openobserve_url:  # OpenObserve is optional: omitted means not collected
+        run("events", lambda: events.collect(config, now=now))
     return results
 
 
