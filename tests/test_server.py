@@ -168,7 +168,7 @@ class ServerTests(unittest.TestCase):
 
     def test_history_rejects_bad_input_with_400(self):
         for query in ("", "?metric=nope", "?metric=machine.load%3B--",
-                      "?metric=ai.x.runs24h", "?metric=machine.load&since=abc",
+                      "?metric=ai.x.runs24h", "?metric=ai.mystery.minutes24h", "?metric=machine.load&since=abc",
                       "?metric=machine.load&since=9223372036854775808",
                       "?metric=machine.load&since=-9223372036854775809"):
             self.assertEqual(self.request("GET", "/api/history" + query)[0], 400, query)

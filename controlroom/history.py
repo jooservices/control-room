@@ -7,16 +7,21 @@ import sqlite3
 from pathlib import Path
 from typing import Mapping
 
+from controlroom.assembler import AGENTS
+
 RETENTION_DAYS = 90
 FIXED_METRICS = frozenset(
     {"machine.load", "machine.mem_used", "flow.done24h", "flow.rework24h"}
 )
-AI_MINUTES_METRIC = re.compile(r"ai\.[A-Za-z0-9_-]+\.minutes24h")
+AI_MINUTES_METRIC = re.compile(r"ai\.([A-Za-z0-9_-]+)\.minutes24h")
 
 
 def is_known_metric(metric: str) -> bool:
     """Tell whether ``metric`` is one of the series the history API serves."""
-    return metric in FIXED_METRICS or AI_MINUTES_METRIC.fullmatch(metric) is not None
+    if metric in FIXED_METRICS:
+        return True
+    match = AI_MINUTES_METRIC.fullmatch(metric)
+    return match is not None and match.group(1) in AGENTS
 
 
 def snapshot_samples(snapshot: Mapping[str, object]) -> dict[str, float]:
