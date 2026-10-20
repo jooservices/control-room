@@ -9,6 +9,7 @@ from unittest.mock import patch
 from controlroom import collector
 from controlroom.assembler import assemble
 from controlroom.config import Config, load_config
+from controlroom.sources.machine import parse_usage_log
 from controlroom.history import HistoryStore, snapshot_samples
 
 NOW = dt.datetime(2026, 10, 20, 12, 0, 0, tzinfo=dt.timezone.utc)
@@ -48,8 +49,14 @@ def machine_result():
         "cooldown": {}, "load": [0.5, 0.4, 0.3], "cpus": 8, "mem": {"total": 16.0, "avail": 6.0},
         "disk": {"total": 10}, "uptime_h": 5.0, "containers": 2, "services": {"s": "active"},
         "code": "abc", "flowProjects": ["JOOCR"], "host": "wsl", "redis": None,
-        "usage": [{"name": "usage:1", "end": EPOCH - 600, "key": "JOOCR-5", "role": "developer",
-                   "ai": "Claude", "minutes": 4.0, "why": "ok"}],
+        "usage": parse_usage_log(
+            {
+                f"usage:JOOCR-5:Claude:{EPOCH - 600}": json.dumps(
+                    {"role": "developer", "ai": "Claude", "minutes": 4.0, "why": "ok"}
+                )
+            },
+            now=EPOCH,
+        ),
     }
 
 

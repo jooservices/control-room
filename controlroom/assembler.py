@@ -249,9 +249,9 @@ def _apply_done_by_ai(snapshot, good, now) -> None:
         return
     base = good["machine"].get("now", int(now.timestamp()))
     worked = {
-        run.get("key")
+        _run_key(run)
         for run in good["machine"].get("usage") or []
-        if run.get("key") and base - run["end"] < 86400
+        if _run_key(run) and base - run["end"] < 86400
     }
     done = {
         event["key"]
@@ -261,6 +261,14 @@ def _apply_done_by_ai(snapshot, good, now) -> None:
         and _within(event.get("at"), now, 86400)
     }
     snapshot["flow"]["doneByAiLast24h"] = len(done & worked)
+
+
+def _run_key(run) -> str | None:
+    """Ticket key of a usage run: its own key, else the one in ``usage:<ticket>:...``."""
+    if run.get("key"):
+        return run["key"]
+    parts = str(run.get("name") or "").split(":")
+    return parts[1] if len(parts) > 2 and parts[0] == "usage" and parts[1] else None
 
 
 def _minutes(rows) -> float:
@@ -339,7 +347,7 @@ def _apply_timeline(snapshot, good, flow_projects, now, epoch) -> None:
         base = good["machine"].get("now", epoch)
         runs = [
             {
-                "key": run.get("key"),
+                "key": _run_key(run),
                 "role": run.get("role"),
                 "ai": run.get("ai"),
                 "start": run["end"] - int(run.get("minutes", 0) * 60),
@@ -405,7 +413,7 @@ def _apply_events(snapshot, good, now) -> None:
                 {
                     "at": iso(dt.datetime.fromtimestamp(run["end"], dt.timezone.utc)),
                     "kind": "run" if finished else "badrun",
-                    "key": run.get("key"),
+                    "key": _run_key(run),
                     "text": text,
                 }
             )
