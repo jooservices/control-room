@@ -411,6 +411,22 @@ class AssembleTest(unittest.TestCase):
         self.assertNotIn("events", omitted["meta"]["ok"])
         self.assertNotIn("events", omitted["meta"]["errorAt"])
 
+    def test_omitted_events_source_resets_event_metrics(self):
+        first = assemble(all_results(), None, now=NOW)
+        self.assertTrue(any(first["flow"]["statusMedianMinutes"].values()))
+        results = all_results()
+        del results["events"]
+
+        omitted = assemble(results, first, now=NOW + dt.timedelta(seconds=45))
+
+        self.assertEqual(
+            omitted["flow"]["statusMedianMinutes"],
+            {"24h": {}, "7d": {}, "30d": {}},
+        )
+        self.assertEqual(
+            omitted["ai"]["usageByRole"], {"24h": [], "7d": [], "30d": []}
+        )
+
 
 class FlowStateTest(unittest.TestCase):
     def results_with_active(self):

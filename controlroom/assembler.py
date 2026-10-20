@@ -59,6 +59,13 @@ def source_failure(name: str, result: object) -> str | None:
     return None
 
 
+def _reset_event_metrics(snapshot: dict[str, object]) -> None:
+    """Drop the metrics owned by the omitted ``events`` source."""
+    empty = empty_snapshot()
+    snapshot["flow"]["statusMedianMinutes"] = empty["flow"]["statusMedianMinutes"]
+    snapshot["ai"]["usageByRole"] = empty["ai"]["usageByRole"]
+
+
 def assemble(
     results: Mapping[str, object],
     previous: Mapping[str, object] | None,
@@ -93,6 +100,7 @@ def assemble(
     for name in SOURCES:
         if name == "events" and name not in results:
             error_at.pop(name, None)  # OpenObserve is optional: omitted is not a failure
+            _reset_event_metrics(snapshot)
             continue
         result = results.get(name, RuntimeError("missing"))
         failure = source_failure(name, result)
