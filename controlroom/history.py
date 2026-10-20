@@ -174,8 +174,11 @@ class HistoryStore:
                 row.setdefault("bad" + label, 0)
                 if ended > now - days * 86400:
                     row["runs" + label] += 1
-                    row["minutes" + label] = round(row["minutes" + label] + minutes, 1)
+                    row["minutes" + label] += minutes
                     row["bad" + label] += 0 if ok else 1
+        for row in rows.values():
+            for label, _ in USAGE_WINDOWS:
+                row["minutes" + label] = round(row["minutes" + label], 1)
         return [rows[key] for key in sorted(rows)]
 
     def query(

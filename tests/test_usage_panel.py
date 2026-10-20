@@ -50,6 +50,13 @@ class UsagePanelTest(unittest.TestCase):
         claude = rows[("Claude", "reviewer")]
         self.assertEqual((claude["runs30d"], claude["minutes30d"]), (1, 2.0))
 
+    def test_minutes_are_summed_before_rounding_once(self):
+        self.store.record_runs([
+            run(60 * (i + 1), "Codex", "developer", 0.06, ticket="B-%d" % i) for i in range(5)
+        ])
+        (codex,) = self.store.usage_panel(FIXTURE_NOW)
+        self.assertEqual((codex["runs24h"], codex["minutes24h"]), (5, 0.3))
+
     def test_fixture_log_counts_valid_runs_only(self):
         self.assertEqual(self.store.record_runs(self.fixture_usage()), 3)
         rows = {(r["ai"], r["role"]): r for r in self.store.usage_panel(FIXTURE_NOW)}
