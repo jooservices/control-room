@@ -151,10 +151,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def _stream_event(self) -> bytes | None:
         try:
-            body = self.snapshot_path.read_bytes()
-        except OSError:
-            return None
-        return b"event: snapshot\ndata: " + body.replace(b"\n", b"") + b"\n\n"
+            data = json.dumps(json.loads(self.snapshot_path.read_bytes()))
+        except (OSError, ValueError):
+            return None  # missing or half-written file: try again on the next tick
+        return "event: snapshot\ndata: {}\n\n".format(data).encode("utf-8")
 
     def _snapshot_version(self) -> tuple[int, int] | None:
         try:

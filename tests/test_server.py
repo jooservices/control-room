@@ -197,7 +197,7 @@ class ServerTests(unittest.TestCase):
                          "text/event-stream; charset=utf-8")
         self.assertEqual(response.getheader("Cache-Control"), "no-store")
         self.assertEqual(self.read_event(response),
-                         ["event: snapshot", 'data: {"version":1}'])
+                         ["event: snapshot", 'data: {"version": 1}'])
         self.assertEqual(self.read_event(response), [": keep-alive"])
         self.snapshot.write_text('{"version":2}', encoding="utf-8")
         later = time.time() + 5
@@ -206,7 +206,7 @@ class ServerTests(unittest.TestCase):
             lines = self.read_event(response)
             if lines != [": keep-alive"]:
                 break
-        self.assertEqual(lines, ["event: snapshot", 'data: {"version":2}'])
+        self.assertEqual(lines, ["event: snapshot", 'data: {"version": 2}'])
 
     def test_lan_address_is_not_wildcard(self):
         self.assertNotEqual(lan_address(), "0.0.0.0")
