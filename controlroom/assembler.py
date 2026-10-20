@@ -302,9 +302,11 @@ def _apply_ai(snapshot, raw) -> None:
                 "runs24h": len(last_day),
                 "minutes24h": _minutes(last_day),
                 "bad24h": _bad(last_day),
-                "runsAll": len(runs),
-                "minutesAll": _minutes(runs),
-                "badAll": _bad(runs),
+                # The machine source keeps only the last 24 hours of usage, so
+                # lifetime totals are unknown rather than a truncated count.
+                "runsAll": None,
+                "minutesAll": None,
+                "badAll": None,
             }
         )
     snapshot["ai"] = {"agents": agents, "versions": {}, "usable": {}}

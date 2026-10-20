@@ -65,6 +65,19 @@ def all_results():
 
 
 class AssembleTest(unittest.TestCase):
+    def test_lifetime_usage_totals_are_unknown_not_truncated(self):
+        results = all_results()
+        old = {"end": EPOCH - 3 * 86400, "ai": "Claude", "minutes": 9.0, "why": "ok"}
+        results["machine"]["usage"] = results["machine"]["usage"] + [old]
+
+        snapshot = assemble(results, None, now=NOW)
+
+        claude = next(a for a in snapshot["ai"]["agents"] if a["id"] == "claude")
+        self.assertEqual(claude["runs24h"], 1)
+        self.assertEqual(
+            (claude["runsAll"], claude["minutesAll"], claude["badAll"]), (None, None, None)
+        )
+
     def test_builds_every_document_from_fake_sources(self):
         snapshot = assemble(all_results(), None, now=NOW)
 
