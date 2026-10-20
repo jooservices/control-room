@@ -1,0 +1,14 @@
+[Unit]
+Description=Control Room collector
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=@REPO_ROOT@
+ExecStart=/usr/bin/python3 -m controlroom.collector
+Restart=always
+RestartSec=15
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target

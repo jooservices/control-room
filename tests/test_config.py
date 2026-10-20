@@ -112,10 +112,10 @@ class ConfigTest(unittest.TestCase):
 
         self.assertEqual(config.github_project_repos, {})
 
-    def test_bind_host_defaults_to_auto_and_port_is_validated(self):
+    def test_bind_host_defaults_to_lan_and_port_is_validated(self):
         config = load_config(self.write_env(VALID_ENV))
         self.assertIsNone(config.bind_host)
-        self.assertEqual(config.port, 8080)
+        self.assertEqual(config.port, 8088)
 
         config = load_config(self.write_env(VALID_ENV + "BIND_HOST=10.0.0.5\nPORT=9000\n"))
         self.assertEqual((config.bind_host, config.port), ("10.0.0.5", 9000))
@@ -131,6 +131,7 @@ class ConfigTest(unittest.TestCase):
         config = load_config(example_path)
 
         self.assertEqual(config.interval_seconds, 45)
+        self.assertEqual(config.port, 8088)
         self.assertEqual(
             config.github_repos,
             ("jooservices/ai-flow", "jooservices/control-room"),
