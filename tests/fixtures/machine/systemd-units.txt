@@ -1,0 +1,4 @@
+aiflow-work@1.service loaded active running AI Flow worker 1
+aiflow-work@2.service loaded inactive dead AI Flow worker 2
+aiflow-health.timer loaded active waiting AI Flow health timer
+unrelated.service loaded active running Unrelated service

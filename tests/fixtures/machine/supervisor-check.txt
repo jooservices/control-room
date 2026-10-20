@@ -1,0 +1,9 @@
+AI Flow configuration:
+projects:
+  JAIF:
+    repo: jooservices/ai-flow
+  JOOCR: { repo: jooservices/control-room }
+  JAVM:
+    repo: jooservices/javmeta
+other:
+  repo: ignored/not-a-project
