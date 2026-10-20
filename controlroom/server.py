@@ -1,7 +1,7 @@
 """Read-only web server: ``python3 -m controlroom.server``.
 
 Serves the static page from ``web/``, ``GET /api/snapshot`` (the file written
-by the collector) and ``GET /healthz``. Only GET and HEAD are accepted and no
+by the collector), ``GET /api/stream`` (server-sent events) and ``GET /healthz``. Only GET and HEAD are accepted and no
 endpoint writes anything.
 """
 
@@ -21,6 +21,8 @@ from controlroom.collector import SNAPSHOT_FILE
 from controlroom.config import ConfigurationError, load_config
 
 STALE_INTERVALS = 3
+STREAM_POLL_SECONDS = 1.0
+STREAM_HEARTBEAT_SECONDS = 15.0
 DEFAULT_WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 CONTENT_SECURITY_POLICY = (
     "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
@@ -86,6 +88,8 @@ class Handler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == "/api/snapshot":
             self._snapshot(send_body)
+        elif path == "/api/stream":
+            self._stream(send_body)
         elif path == "/healthz":
             query = parse_qs(urlsplit(self.path).query)
             self._healthz(send_body, detail=query.get("detail") == ["1"])
@@ -100,6 +104,42 @@ class Handler(BaseHTTPRequestHandler):
                        {"error": "snapshot unavailable"}, send_body)
             return
         self._send(HTTPStatus.OK, body, "application/json", send_body, api=True)
+
+    def _stream(self, send_body: bool) -> None:
+        """Push the whole snapshot as a ``snapshot`` event whenever the file changes."""
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Accel-Buffering", "no")
+        self.send_header("Content-Security-Policy", CONTENT_SECURITY_POLICY)
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.close_connection = True
+        if not send_body:
+            return
+        last_mtime = None
+        last_sent = self.clock()
+        try:
+            while True:
+                chunk = b""
+                try:
+                    mtime = self.snapshot_path.stat().st_mtime_ns
+                    if mtime != last_mtime:
+                        data = json.dumps(json.loads(self.snapshot_path.read_bytes()))
+                        last_mtime = mtime
+                        chunk = "event: snapshot\ndata: {}\n\n".format(data).encode("utf-8")
+                except (OSError, ValueError):
+                    pass  # missing or half-written file: try again on the next tick
+                if not chunk and self.clock() - last_sent >= STREAM_HEARTBEAT_SECONDS:
+                    chunk = b": keep-alive\n\n"
+                if chunk:
+                    self.wfile.write(chunk)
+                    self.wfile.flush()
+                    last_sent = self.clock()
+                time.sleep(STREAM_POLL_SECONDS)
+        except (OSError, ValueError):
+            return  # client went away
 
     def _healthz(self, send_body: bool, detail: bool = False) -> None:
         try:

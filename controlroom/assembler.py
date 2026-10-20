@@ -324,10 +324,10 @@ def _apply_ai(snapshot, raw) -> None:
 
 
 def _worker_total(services) -> int | None:
-    """Worker capacity is the number of aiflow worker units; None when unknown."""
+    """Worker capacity is the number of aiflow worker units (aiflow-work@N.service); None when unknown."""
     if not isinstance(services, dict):
         return None
-    total = sum(1 for unit in services if "worker" in unit)
+    total = sum(1 for unit in services if unit.startswith("aiflow-work@"))
     return total or None
 
 

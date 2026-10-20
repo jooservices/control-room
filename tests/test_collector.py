@@ -69,11 +69,19 @@ class WorkerTotalTests(unittest.TestCase):
         from controlroom.assembler import _worker_total
 
         self.assertEqual(
-            _worker_total({"aiflow-worker@1.service": "active", "aiflow-worker@2.service": "active", "aiflow-web.service": "active"}),
+            _worker_total({"aiflow-work@1.service": "active", "aiflow-work@2.service": "active", "aiflow-web.service": "active"}),
             2,
         )
         self.assertIsNone(_worker_total({"aiflow-web.service": "active"}))
         self.assertIsNone(_worker_total(None))
+
+    def test_counts_the_units_of_the_machine_fixture(self):
+        from controlroom.assembler import _worker_total
+        from controlroom.sources.machine import parse_systemd_output
+
+        fixture = Path(__file__).parent / "fixtures" / "machine" / "systemd-units.txt"
+        services = parse_systemd_output(fixture.read_text(encoding="utf-8"))
+        self.assertEqual(_worker_total(services), 2)
 
 
 class AssembleTest(unittest.TestCase):
