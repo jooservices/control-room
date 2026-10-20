@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
+import re
 from urllib.parse import urlsplit
 
 
@@ -23,6 +24,7 @@ class Config:
     github_repos: tuple[str, ...]
     data_dir: Path
     interval_seconds: int
+    github_project_repos: dict[str, str] = field(default_factory=dict)
 
 
 _REQUIRED_VARIABLES = (
@@ -107,6 +109,27 @@ def load_config(env_file: str | Path = ".env") -> Config:
             "GITHUB_REPOS entries must use owner/repository form"
         )
 
+    github_project_repos: dict[str, str] = {}
+    raw_project_repos = values.get("GITHUB_PROJECT_REPOS", "")
+    if raw_project_repos.strip():
+        for entry in raw_project_repos.split(","):
+            project_key, separator, repository = entry.partition("=")
+            project_key = project_key.strip()
+            repository = repository.strip()
+            parts = repository.split("/")
+            if (
+                not separator
+                or not re.fullmatch(r"[A-Z][A-Z0-9]*", project_key)
+                or project_key in github_project_repos
+                or len(parts) != 2
+                or not all(parts)
+                or any(character.isspace() for character in repository)
+            ):
+                raise ConfigurationError(
+                    "GITHUB_PROJECT_REPOS entries must use unique PROJECT=owner/repository mappings"
+                )
+            github_project_repos[project_key] = repository
+
     try:
         interval_seconds = int(values["COLLECT_INTERVAL_SECONDS"])
     except ValueError:
@@ -123,4 +146,5 @@ def load_config(env_file: str | Path = ".env") -> Config:
         github_repos=github_repos,
         data_dir=Path(values["DATA_DIR"].strip()).expanduser(),
         interval_seconds=interval_seconds,
+        github_project_repos=github_project_repos,
     )

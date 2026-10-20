@@ -10,6 +10,7 @@ JIRA_SITE=https://jira.example.test/
 JIRA_READ_ONLY_USER=collector@example.test
 JIRA_READ_ONLY_TOKEN=top-secret-token
 GITHUB_REPOS=jooservices/ai-flow, jooservices/control-room
+GITHUB_PROJECT_REPOS=JAIF=jooservices/ai-flow,JOOCR=jooservices/control-room
 DATA_DIR=./data
 COLLECT_INTERVAL_SECONDS=45
 """
@@ -30,6 +31,13 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(
             config.github_repos,
             ("jooservices/ai-flow", "jooservices/control-room"),
+        )
+        self.assertEqual(
+            config.github_project_repos,
+            {
+                "JAIF": "jooservices/ai-flow",
+                "JOOCR": "jooservices/control-room",
+            },
         )
         self.assertEqual(config.data_dir, Path("./data"))
         self.assertEqual(config.interval_seconds, 45)
@@ -76,6 +84,34 @@ class ConfigTest(unittest.TestCase):
                 with self.assertRaises(ConfigurationError):
                     load_config(self.write_env(env))
 
+    def test_rejects_malformed_project_repository_mappings(self):
+        for mappings in (
+            "not-a-mapping",
+            "jaif=jooservices/ai-flow",
+            "JAIF=jooservices/ai-flow,JAIF=jooservices/other",
+            "JAIF=jooservices/ai-flow,",
+            "JAIF=jooservices/ai-flow, JOOCR=owner/repo/extra",
+        ):
+            with self.subTest(mappings=mappings):
+                env = VALID_ENV.replace(
+                    "JAIF=jooservices/ai-flow,JOOCR=jooservices/control-room",
+                    mappings,
+                )
+                with self.assertRaises(ConfigurationError):
+                    load_config(self.write_env(env))
+
+    def test_project_repository_mapping_is_optional_for_existing_config(self):
+        config = load_config(
+            self.write_env(
+                VALID_ENV.replace(
+                    "GITHUB_PROJECT_REPOS=JAIF=jooservices/ai-flow,JOOCR=jooservices/control-room\n",
+                    "",
+                )
+            )
+        )
+
+        self.assertEqual(config.github_project_repos, {})
+
     def test_env_example_loads_all_required_settings(self):
         example_path = Path(__file__).parents[1] / ".env.example"
 
@@ -85,6 +121,13 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(
             config.github_repos,
             ("jooservices/ai-flow", "jooservices/control-room"),
+        )
+        self.assertEqual(
+            config.github_project_repos,
+            {
+                "JAIF": "jooservices/ai-flow",
+                "JOOCR": "jooservices/control-room",
+            },
         )
 
 
