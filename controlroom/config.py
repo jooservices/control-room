@@ -6,6 +6,9 @@ import re
 from urllib.parse import urlsplit
 
 
+DEFAULT_INTERVAL_SECONDS = 45
+
+
 class ConfigurationError(ValueError):
     """Raised when the collector configuration is missing or invalid."""
 
@@ -33,7 +36,6 @@ _REQUIRED_VARIABLES = (
     "JIRA_READ_ONLY_TOKEN",
     "GITHUB_REPOS",
     "DATA_DIR",
-    "COLLECT_INTERVAL_SECONDS",
 )
 
 
@@ -131,7 +133,10 @@ def load_config(env_file: str | Path = ".env") -> Config:
             github_project_repos[project_key] = repository
 
     try:
-        interval_seconds = int(values["COLLECT_INTERVAL_SECONDS"])
+        interval_seconds = int(
+            values.get("COLLECT_INTERVAL_SECONDS", "").strip()
+            or DEFAULT_INTERVAL_SECONDS
+        )
     except ValueError:
         raise ConfigurationError(
             "COLLECT_INTERVAL_SECONDS must be an integer"

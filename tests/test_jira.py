@@ -138,6 +138,7 @@ class JiraSourceTest(unittest.TestCase):
         self.assertEqual([ticket["key"] for ticket in project["active"]], [
             "DEMO-6", "DEMO-2"
         ])
+        self.assertTrue(all(isinstance(t["labels"], list) for t in project["active"]))
         self.assertEqual(project["doneLast24h"], 1)
         self.assertTrue(project["onFlow"])
 

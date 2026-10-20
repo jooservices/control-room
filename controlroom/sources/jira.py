@@ -28,7 +28,7 @@ PROJECTS = {
     "JOOWT": ("JOOservices WP Themes", "jooservices-wp-themes", None),
 }
 
-_ISSUE_FIELDS = "summary,status,issuetype,priority,parent,updated"
+_ISSUE_FIELDS = "summary,status,issuetype,priority,parent,updated,labels"
 _SEARCH_PAGE_SIZE = 100
 _CHANGELOG_PAGE_SIZE = 100
 _MAX_ACTIVE_TICKETS = 30
@@ -355,6 +355,7 @@ def _active_ticket(issue: dict[str, object]) -> dict[str, object]:
         "summary": (fields.get("summary") or "")[:100],
         "parent": parent.get("key") if isinstance(parent, dict) else None,
         "updated": (fields.get("updated") or "")[:16],
+        "labels": list(fields.get("labels") or []),
     }
 
 

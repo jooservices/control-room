@@ -117,7 +117,7 @@ class ConfigTest(unittest.TestCase):
 
         config = load_config(example_path)
 
-        self.assertEqual(config.interval_seconds, 30)
+        self.assertEqual(config.interval_seconds, 45)
         self.assertEqual(
             config.github_repos,
             ("jooservices/ai-flow", "jooservices/control-room"),

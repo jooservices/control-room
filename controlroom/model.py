@@ -26,7 +26,8 @@ contains asOf, ok, and flowProjects. These keys match
 ``docs/prototype/collect.py`` and the prototype page.
 
 The empty values are schema defaults for a collector to populate; they do not
-represent a successful source read.
+represent a successful source read. Flow numbers no source collects (cycle,
+doneByAiLast24h, reworkLast24h, qaslot, paused) default to ``None``: unknown.
 """
 
 SNAPSHOT_VERSION = 1
@@ -42,13 +43,13 @@ def empty_snapshot() -> dict[str, object]:
             "watched": [],
             "inflight": [],
             "statusCounts": {},
-            "cycle": {"n": 0, "p25": None, "p50": None, "p75": None},
+            "cycle": {"n": None, "p25": None, "p50": None, "p75": None},
             "doneLast24h": 0,
-            "doneByAiLast24h": 0,
-            "reworkLast24h": 0,
+            "doneByAiLast24h": None,
+            "reworkLast24h": None,
             "mergedPRs24h": 0,
-            "qaslot": {},
-            "paused": False,
+            "qaslot": None,
+            "paused": None,
         },
         "ai": {"agents": [], "versions": {}, "usable": {}},
         "timeline": {"runs": [], "merges": [], "now": 0},
