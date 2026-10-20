@@ -95,6 +95,7 @@ class AssembleTest(unittest.TestCase):
         self.assertEqual(snapshot["timeline"]["runs"][0]["start"], EPOCH - 600 - 240)
         self.assertEqual(snapshot["timeline"]["merges"][0]["key"], "JOOCR-5")
         self.assertEqual(snapshot["machine"]["workersBusy"], 1)
+        self.assertEqual(snapshot["machine"]["host"], "Workstation")
         self.assertEqual(snapshot["machine"]["runs"][0]["name"], "ci")
         self.assertEqual(
             sorted(e["kind"] for e in snapshot["events"]["list"]), ["merge", "run", "status"]

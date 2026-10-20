@@ -172,6 +172,7 @@ class MachineParserTest(unittest.TestCase):
         self.assertEqual(state["containers"], 1)
         self.assertEqual(state["services"]["aiflow-work@1.service"], "active")
         self.assertEqual(state["code"], "abc123")
+        self.assertEqual(state["host"], "Workstation")
         self.assertEqual(state["flowProjects"], ["JAIF", "JOOCR", "JAVM"])
         commands = [call.args[0][0] for call in run_command.call_args_list]
         self.assertNotIn("ssh", commands)

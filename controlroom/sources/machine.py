@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import socket
 import subprocess
 import sys
 import time
@@ -324,5 +323,5 @@ def collect(
         else None,
         "code": code_output.strip() if code_output is not None else None,
         "flowProjects": discover_flow_projects(root),
-        "host": socket.gethostname(),
+        "host": "Workstation",
     }
