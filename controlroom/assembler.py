@@ -74,7 +74,8 @@ def assemble(
     as failed. ``machine_history`` replaces ``machine.history`` when given.
 
     ``meta.ok[source]`` is false for a failed source and ``meta.errorAt[source]``
-    holds the time of its latest failure. ``meta.asOf`` moves only when at least
+    holds the time of its latest failure; ``meta.downSince[source]`` holds the
+    time of the first failure of the current outage. ``meta.asOf`` moves only when at least
     one source succeeded.
     """
     snapshot = empty_snapshot()
@@ -89,6 +90,8 @@ def assemble(
     good: dict[str, object] = {}
     ok: dict[str, bool] = {}
     error_at = dict(old_meta.get("errorAt") or {})
+    old_down = old_meta.get("downSince") or {}
+    down_since: dict[str, str] = {}
     for name in SOURCES:
         result = results.get(name, RuntimeError("missing"))
         failure = source_failure(name, result)
@@ -98,6 +101,7 @@ def assemble(
             error_at.pop(name, None)
         else:
             error_at[name] = now_iso
+            down_since[name] = old_down.get(name) or now_iso
 
     flow_projects = list(old_meta.get("flowProjects") or [])
     if "machine" in good:
@@ -118,6 +122,7 @@ def assemble(
         "asOf": now_iso if good else old_meta.get("asOf"),
         "ok": ok,
         "errorAt": error_at,
+        "downSince": down_since,
         "flowProjects": flow_projects,
     }
     return snapshot

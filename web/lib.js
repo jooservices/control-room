@@ -47,6 +47,16 @@ const CRLib = (function () {
     return { level, age, text: (level ? 'Last update ' : 'Live · updated ') + ago(age) + ' ago · Jira, GitHub, worker machine' };
   }
 
+  /* Sources whose latest collection failed (meta.ok[name] === false), with the start of the outage:
+     meta.downSince, else meta.errorAt. The result is sorted by name; since is null when no time is known. */
+  function downSources(meta, nowMs) {
+    const ok = (meta && meta.ok) || {}, since = (meta && meta.downSince) || {}, last = (meta && meta.errorAt) || {};
+    return Object.keys(ok).filter(k => ok[k] === false).sort().map(key => {
+      const iso = since[key] || last[key] || null, t = iso ? new Date(iso).getTime() : NaN;
+      return { key, since: isNaN(t) ? null : iso, age: isNaN(t) ? null : Math.max(0, (nowMs - t) / 1000) };
+    });
+  }
+
   /* The server's Content-Security-Policy forbids inline style attributes, so generated markup carries
      data-css="--c:red;width:40%" and applyCss turns it into CSSOM calls, which the policy allows. */
   function parseCss(text) {
@@ -91,5 +101,5 @@ const CRLib = (function () {
     };
   }
 
-  return { SNAPSHOT_URL, STREAM_URL, POLL_MS, STALE_AFTER_S, OLD_AFTER_S, esc, fmtMin, ago, badge, parseCss, applyCss, isSnapshot, createFeed, renderEvent };
+  return { SNAPSHOT_URL, STREAM_URL, POLL_MS, STALE_AFTER_S, OLD_AFTER_S, esc, fmtMin, ago, badge, downSources, parseCss, applyCss, isSnapshot, createFeed, renderEvent };
 })();

@@ -13,7 +13,7 @@ from controlroom.server import make_server
 
 WEB = Path(__file__).resolve().parent.parent / "web"
 PLACEHOLDER_IDS = {
-    "live", "liveText", "srcwarn", "theme", "kpis", "tl", "tlnote", "legend", "fun", "funnote", "ptable",
+    "live", "liveText", "srcbanner", "theme", "kpis", "tl", "tlnote", "legend", "fun", "funnote", "ptable",
     "aitable", "ainote", "machine", "gauges", "spark", "mkv", "chips", "event-project", "feed", "scrim", "drawer",
 }
 
@@ -112,6 +112,8 @@ class WebTests(unittest.TestCase):
 
     def test_source_failures_and_eta_fallback_come_from_the_snapshot(self):
         app = (WEB / "app.js").read_text(encoding="utf-8")
+        self.assertIn("CRLib.downSources(DOCS && DOCS.meta", app)
+        self.assertIn("meta.ok", (WEB / "lib.js").read_text(encoding="utf-8"))
         self.assertIn("DOCS.meta.ok", app)
         self.assertIn("item.eta", app)
         self.assertIn("not enough data (", app)
@@ -153,6 +155,77 @@ class WebTests(unittest.TestCase):
         self.assertIn("CRLib.renderEvent(e, clock(e.at))", (WEB / "app.js").read_text(encoding="utf-8"))
         self.assertIn("@media (max-width: 480px)", css)
         self.assertIn(".event-open:focus-visible", css)
+
+    def test_banner_lists_down_sources_with_since_and_marks_panels_stale(self):
+        lib = (WEB / "lib.js").read_text(encoding="utf-8")
+        app = (WEB / "app.js").read_text(encoding="utf-8")
+        html = (WEB / "index.html").read_text(encoding="utf-8")
+        self.assertIn("meta.downSince", lib)
+        self.assertIn("down since", app)
+        self.assertIn("<b>stale</b>", app)  # a KPI tile shows the word, not the last known number
+        cards = re.findall(r'<section class="card [^"]*" data-src="([^"]+)"><h2>[^<]*<span class="stale-tag" hidden>stale</span>', html)
+        self.assertEqual(len(cards), 6, "every card names its sources and has a text stale tag")
+        self.assertEqual({s for c in cards for s in c.split()}, {"jira", "github", "machine"})
+
+    def test_keyboard_and_phone_hooks(self):
+        app = (WEB / "app.js").read_text(encoding="utf-8")
+        css = (WEB / "style.css").read_text(encoding="utf-8")
+        html = (WEB / "index.html").read_text(encoding="utf-8")
+        self.assertEqual(app.count('<tr class="row" tabindex="0"'), 2)
+        self.assertIn('class="seg-bar"', app)
+        self.assertIn('tabindex="0" role="button"', app)
+        self.assertIn("e.key === 'Enter'", app)
+        self.assertIn(":focus-visible {", css)
+        self.assertIn("visibility: hidden", css)  # a closed drawer is out of the tab order
+        self.assertIn('role="dialog"', html)
+        self.assertRegex(css, r"@media \(max-width: 480px\)")
+        self.assertIn("overflow-x: hidden", css)
+        self.assertIn("width=device-width, initial-scale=1", html)
+
+    def test_text_contrast_is_at_least_4_5_to_1_in_both_themes(self):
+        for theme, palette in themes().items():
+            for fg, bgs in TEXT_ON.items():
+                for bg in bgs:
+                    ratio = contrast(palette[fg], palette[bg])
+                    self.assertGreaterEqual(ratio, 4.5, "{} {} on {}: {:.2f}".format(theme, fg, bg, ratio))
+            for status in ("todo", "run", "wait", "human", "blocked", "done", "backlog"):
+                ratio = contrast(palette["on-color"], palette[status])
+                self.assertGreaterEqual(ratio, 4.5, "{} pill text on {}: {:.2f}".format(theme, status, ratio))
+
+
+def css_vars(block):
+    return dict(re.findall(r"--([a-z0-9-]+):\s*(#[0-9a-fA-F]{6})", block))
+
+
+def themes():
+    css = (WEB / "style.css").read_text(encoding="utf-8")
+    dark = css_vars(re.search(r":root \{(.*?)\n\}", css, re.S).group(1))
+    light = css_vars(re.search(r':root\[data-theme="light"\] \{(.*?)\}', css, re.S).group(1))
+    media = css_vars(re.search(r"@media \(prefers-color-scheme: light\) \{ :root:not\(\[data-theme=\"dark\"\]\) \{(.*?)\} \}", css, re.S).group(1))
+    assert light == media, "the system-light palette and the chosen-light palette must match"
+    return {"dark": dark, "light": {**dark, **light}}
+
+
+def luminance(color):
+    channels = [int(color[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+    lin = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in channels]
+    return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+
+
+def contrast(first, second):
+    high, low = sorted((luminance(first), luminance(second)), reverse=True)
+    return (high + 0.05) / (low + 0.05)
+
+
+# text colour -> the surfaces it is drawn on
+TEXT_ON = {
+    "ink": ("bg", "panel", "panel-2"),
+    "ink-2": ("bg", "panel", "panel-2", "grid"),
+    "accent": ("bg", "panel", "panel-2"),
+    "blocked": ("bg", "panel"),
+    "wait": ("bg",),
+    "on-color": ("accent",),
+}
 
 
 if __name__ == "__main__":

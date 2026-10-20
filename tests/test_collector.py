@@ -272,6 +272,14 @@ class AssembleTest(unittest.TestCase):
         self.assertIn("jira", first["meta"]["errorAt"])
         second = assemble(all_results(), first, now=NOW + dt.timedelta(seconds=45))
         self.assertEqual(second["meta"]["errorAt"], {})
+        self.assertEqual(second["meta"]["downSince"], {})
+
+    def test_down_since_keeps_the_first_failure_of_an_outage(self):
+        first = assemble({**all_results(), "jira": OSError()}, None, now=NOW)
+        second = assemble({**all_results(), "jira": OSError()}, first, now=NOW + dt.timedelta(minutes=5))
+        self.assertEqual(first["meta"]["downSince"], {"jira": "2026-10-20T12:00:00Z"})
+        self.assertEqual(second["meta"]["downSince"], {"jira": "2026-10-20T12:00:00Z"})
+        self.assertEqual(second["meta"]["errorAt"], {"jira": "2026-10-20T12:05:00Z"})
 
 
 class FlowStateTest(unittest.TestCase):

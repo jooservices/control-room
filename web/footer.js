@@ -21,8 +21,8 @@
       footer.className = 'old';
     } else {
       var seconds = Math.max(0, (Date.now() - asOf) / 1000);
-      lag.textContent = 'Collector lag: ' + formatLag(seconds);
       footer.className = seconds > OLD_SECONDS ? 'old' : seconds > STALE_SECONDS ? 'stale' : '';
+      lag.textContent = 'Collector lag: ' + formatLag(seconds) + (footer.className ? ' (' + footer.className + ')' : '');
     }
     var collector = meta && meta.collector;
     version.textContent = 'version ' + (collector && collector.version ? collector.version : 'unknown');
