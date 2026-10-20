@@ -115,5 +115,20 @@ class ServerTests(unittest.TestCase):
         self.assertNotEqual(lan_address(), "0.0.0.0")
 
 
+class FooterAssetTests(unittest.TestCase):
+    WEB = Path(__file__).resolve().parent.parent / "web"
+
+    def test_page_has_footer_wired_to_collector_meta(self):
+        page = (self.WEB / "index.html").read_text(encoding="utf-8")
+        script = (self.WEB / "footer.js").read_text(encoding="utf-8")
+        self.assertIn('id="collector-lag"', page)
+        self.assertIn('id="collector-version"', page)
+        self.assertIn('src="footer.js"', page)
+        self.assertNotIn("<script>", page)
+        self.assertIn("meta.asOf", script)
+        self.assertIn("collector.version", script)
+        self.assertIn("/api/snapshot", script)
+
+
 if __name__ == "__main__":
     unittest.main()
