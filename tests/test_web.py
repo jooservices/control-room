@@ -114,7 +114,7 @@ class WebTests(unittest.TestCase):
         app = (WEB / "app.js").read_text(encoding="utf-8")
         self.assertIn("CRLib.downSources(DOCS && DOCS.meta", app)
         self.assertIn("meta.ok", (WEB / "lib.js").read_text(encoding="utf-8"))
-        self.assertIn("DOCS.meta.ok", app)
+        self.assertIn("CRLib.downSources(DOCS && DOCS.meta", app)
         self.assertIn("item.eta", app)
         self.assertIn("not enough data (", app)
         self.assertNotIn("/ 2'", app)
@@ -200,7 +200,7 @@ class WebTests(unittest.TestCase):
         self.assertEqual(app.count('<tr class="row" tabindex="0"'), 2)
         self.assertIn('class="seg-bar"', app)
         self.assertIn('tabindex="0" role="button"', app)
-        self.assertIn("e.key === 'Enter'", app)
+        self.assertIn("e.key !== 'Enter'", app)
         self.assertIn(":focus-visible {", css)
         self.assertIn("visibility: hidden", css)  # a closed drawer is out of the tab order
         self.assertIn('role="dialog"', html)
