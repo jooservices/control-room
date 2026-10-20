@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
+import ipaddress
 import re
 from urllib.parse import urlsplit
 
@@ -198,6 +199,10 @@ def load_config(env_file: str | Path = ".env") -> Config:
             or parsed_openobserve.fragment
         ):
             raise ConfigurationError("OPENOBSERVE_URL must be an HTTP or HTTPS URL")
+        if not is_secure_openobserve_url(openobserve_url):
+            raise ConfigurationError(
+                "OPENOBSERVE_URL must use HTTPS unless it targets a loopback host"
+            )
     if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_-]*", openobserve_org):
         raise ConfigurationError("OPENOBSERVE_ORG must be a valid organization name")
 
@@ -216,3 +221,22 @@ def load_config(env_file: str | Path = ".env") -> Config:
         openobserve_user=openobserve_user,
         openobserve_password=openobserve_password,
     )
+
+
+def is_secure_openobserve_url(url: str) -> bool:
+    """Allow credentials only over HTTPS, or HTTP to a loopback host."""
+    try:
+        parsed = urlsplit(url)
+        host = parsed.hostname
+    except ValueError:
+        return False
+    if parsed.scheme == "https":
+        return True
+    if parsed.scheme != "http" or not host:
+        return False
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False

@@ -9,7 +9,7 @@ from typing import Mapping
 from urllib.parse import quote, urljoin
 
 from controlroom import http
-from controlroom.config import Config
+from controlroom.config import Config, is_secure_openobserve_url
 
 
 STREAM = "aiflow_events"
@@ -20,12 +20,14 @@ PERIODS = {
     "7d": dt.timedelta(days=7),
     "30d": dt.timedelta(days=30),
 }
+# Status intervals ending inside a window start at an earlier transition.
+STATUS_LOOKBACK = dt.timedelta(days=60)
 _EVENT_TYPES = {"ticket.status", "step.run", "ai.usage"}
 _UTC = dt.timezone.utc
 
 
 def collect(config: Config, *, now: dt.datetime) -> dict[str, object]:
-    """Query the last 30 days and return status and AI usage aggregates."""
+    """Query the last 30 days (plus a status lookback) and return status and AI usage aggregates."""
     _require_aware(now)
     if (
         not config.openobserve_url
@@ -34,7 +36,10 @@ def collect(config: Config, *, now: dt.datetime) -> dict[str, object]:
     ):
         raise RuntimeError("OpenObserve is not configured")
 
-    start = now.astimezone(_UTC) - PERIODS["30d"]
+    if not is_secure_openobserve_url(config.openobserve_url):
+        raise RuntimeError("OpenObserve credentials require HTTPS")
+
+    start = now.astimezone(_UTC) - PERIODS["30d"] - STATUS_LOOKBACK
     start_us = int(start.timestamp() * 1_000_000)
     end_us = int(now.astimezone(_UTC).timestamp() * 1_000_000)
     endpoint = urljoin(
@@ -131,7 +136,9 @@ def parse_query_result(result: object, *, now: dt.datetime) -> dict[str, object]
         if kind not in _EVENT_TYPES:
             continue
         at = _event_time(row)
-        if at < current - PERIODS["30d"] or at > current:
+        if at > current:
+            continue
+        if kind != "ticket.status" and at < current - PERIODS["30d"]:
             continue
         if kind == "ticket.status":
             key = _ticket_key(row)

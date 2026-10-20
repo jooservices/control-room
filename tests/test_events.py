@@ -1,4 +1,5 @@
 import base64
+import dataclasses
 import datetime as dt
 import json
 import unittest
@@ -93,6 +94,24 @@ class ParseEventsTest(unittest.TestCase):
             },
         )
 
+    def test_status_interval_ending_in_window_keeps_transition_before_cutoff(self):
+        hits = [
+            {"event": "ticket.status", "ticket_key": "JOO-1", "to_status": "Blocked",
+             "_timestamp": "2026-09-19T12:00:00Z"},
+            {"event": "ticket.status", "ticket_key": "JOO-1", "to_status": "Done",
+             "_timestamp": "2026-09-21T12:00:00Z"},
+        ]
+        result = events.parse_query_result({"hits": hits}, now=NOW)
+        self.assertEqual(result["statusMedianMinutes"]["30d"], {"Blocked": 2880.0})
+        self.assertEqual(result["statusMedianMinutes"]["7d"], {})
+
+    def test_collect_rejects_plain_http_to_remote_host(self):
+        config = dataclasses.replace(configured(), openobserve_url="http://observe.example.test")
+        with patch("controlroom.sources.events.http.search_json") as search:
+            with self.assertRaises(RuntimeError):
+                events.collect(config, now=NOW)
+        search.assert_not_called()
+
     def test_rejects_malformed_recognized_event_instead_of_returning_partial_data(self):
         with self.assertRaisesRegex(ValueError, "token count"):
             events.parse_query_result(
@@ -119,7 +138,7 @@ class ParseEventsTest(unittest.TestCase):
 
 
 class CollectEventsTest(unittest.TestCase):
-    def test_collect_uses_basic_auth_and_a_30_day_search_window(self):
+    def test_collect_uses_basic_auth_and_a_90_day_search_window(self):
         fixture = search_fixture()
         with patch(
             "controlroom.sources.events.http.search_json",
@@ -136,7 +155,7 @@ class CollectEventsTest(unittest.TestCase):
         self.assertEqual(request_query["size"], events.PAGE_SIZE)
         self.assertEqual(
             request_query["start_time"],
-            int((NOW - dt.timedelta(days=30)).timestamp() * 1_000_000),
+            int((NOW - dt.timedelta(days=90)).timestamp() * 1_000_000),
         )
         self.assertEqual(request_query["end_time"], int(NOW.timestamp() * 1_000_000))
         self.assertIn('"aiflow_events"', request_query["sql"])

@@ -101,6 +101,18 @@ class ConfigTest(unittest.TestCase):
         with self.assertRaises(ConfigurationError):
             load_config(self.write_env(env))
 
+    def test_openobserve_plain_http_is_limited_to_loopback_hosts(self):
+        credentials = "OPENOBSERVE_USER=user\nOPENOBSERVE_PASSWORD=password\n"
+        for url in ("http://observe.example.test", "http://10.0.0.5:5080"):
+            with self.subTest(url=url):
+                env = VALID_ENV + "OPENOBSERVE_URL=" + url + "\n" + credentials
+                with self.assertRaises(ConfigurationError):
+                    load_config(self.write_env(env))
+        for url in ("http://localhost:5080", "http://127.0.0.1:5080", "http://[::1]:5080"):
+            with self.subTest(url=url):
+                env = VALID_ENV + "OPENOBSERVE_URL=" + url + "\n" + credentials
+                self.assertEqual(load_config(self.write_env(env)).openobserve_url, url)
+
     def test_rejects_jira_site_without_hostname_or_valid_port(self):
         for site in ("https://:443", "https://jira.example.test:bad"):
             with self.subTest(site=site):
