@@ -1,13 +1,15 @@
 """Read-only web server: ``python3 -m controlroom.server``.
 
 Serves the static page from ``web/``, ``GET /api/snapshot`` (the file written
-by the collector), ``GET /api/stream`` (server-sent events) and ``GET /healthz``. Only GET and HEAD are accepted and no
-endpoint writes anything.
+by the collector), ``GET /api/history?metric=&since=`` (series from the SQLite
+store), ``GET /api/stream`` (server-sent events) and ``GET /healthz``. Only GET
+and HEAD are accepted and no endpoint writes anything.
 """
 
 import argparse
 import json
 import socket
+import sqlite3
 import sys
 import time
 from functools import partial
@@ -17,12 +19,14 @@ from pathlib import Path
 from typing import Callable
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from controlroom.collector import SNAPSHOT_FILE
+from controlroom.collector import HISTORY_FILE, SNAPSHOT_FILE
 from controlroom.config import ConfigurationError, load_config
+from controlroom.history import RETENTION_DAYS, HistoryStore, is_known_metric
 
 STALE_INTERVALS = 3
-STREAM_POLL_SECONDS = 1.0
-STREAM_HEARTBEAT_SECONDS = 15.0
+KEEPALIVE_SECONDS = 20.0
+STREAM_POLL_SECONDS = 0.5
+MAX_HISTORY_SECONDS = RETENTION_DAYS * 86400
 DEFAULT_WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 CONTENT_SECURITY_POLICY = (
     "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
@@ -61,9 +65,15 @@ class Handler(BaseHTTPRequestHandler):
 
     def __init__(self, *args, web_dir: Path, snapshot_path: Path,
                  max_age: float, clock: Callable[[], float] = time.time,
+                 history_path: Path | None = None,
+                 keepalive_seconds: float = KEEPALIVE_SECONDS,
+                 poll_seconds: float = STREAM_POLL_SECONDS,
                  **kwargs) -> None:
         self.web_dir = web_dir
         self.snapshot_path = snapshot_path
+        self.history_path = history_path
+        self.keepalive_seconds = keepalive_seconds
+        self.poll_seconds = poll_seconds
         self.max_age = max_age
         self.clock = clock
         super().__init__(*args, **kwargs)
@@ -85,9 +95,12 @@ class Handler(BaseHTTPRequestHandler):
         raise AttributeError(name)
 
     def _dispatch(self, send_body: bool) -> None:
-        path = urlsplit(self.path).path
+        parts = urlsplit(self.path)
+        path = parts.path
         if path == "/api/snapshot":
             self._snapshot(send_body)
+        elif path == "/api/history":
+            self._history(parts.query, send_body)
         elif path == "/api/stream":
             self._stream(send_body)
         elif path == "/healthz":
@@ -105,41 +118,82 @@ class Handler(BaseHTTPRequestHandler):
             return
         self._send(HTTPStatus.OK, body, "application/json", send_body, api=True)
 
+    def _history(self, query: str, send_body: bool) -> None:
+        params = parse_qs(query)
+        metric = (params.get("metric") or [""])[0]
+        if not is_known_metric(metric):
+            self._json(HTTPStatus.BAD_REQUEST, {"error": "unknown metric"}, send_body)
+            return
+        now = int(self.clock())
+        floor = now - MAX_HISTORY_SECONDS
+        raw_since = (params.get("since") or [None])[0]
+        if raw_since is None:
+            since = floor
+        else:
+            try:
+                since = int(raw_since)
+                if not -2**63 <= since < 2**63:
+                    raise ValueError(raw_since)
+            except ValueError:
+                self._json(HTTPStatus.BAD_REQUEST,
+                           {"error": "since must be unix seconds"}, send_body)
+                return
+            since = max(since, floor)
+        try:
+            points = HistoryStore(self.history_path, read_only=True).query(metric, since)
+        except (sqlite3.Error, TypeError):
+            self._json(HTTPStatus.SERVICE_UNAVAILABLE,
+                       {"error": "history unavailable"}, send_body)
+            return
+        self._json(HTTPStatus.OK, {"metric": metric, "since": since,
+                                   "points": [list(point) for point in points]},
+                   send_body)
+
+    def _stream_event(self) -> bytes | None:
+        try:
+            body = self.snapshot_path.read_bytes()
+        except OSError:
+            return None
+        return b"event: snapshot\ndata: " + body.replace(b"\n", b"") + b"\n\n"
+
+    def _snapshot_version(self) -> tuple[int, int] | None:
+        try:
+            info = self.snapshot_path.stat()
+        except OSError:
+            return None
+        return info.st_mtime_ns, info.st_size
+
     def _stream(self, send_body: bool) -> None:
-        """Push the whole snapshot as a ``snapshot`` event whenever the file changes."""
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
+        self.send_header("Connection", "close")
         self.send_header("X-Accel-Buffering", "no")
         self.send_header("Content-Security-Policy", CONTENT_SECURITY_POLICY)
         self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Connection", "close")
         self.end_headers()
         self.close_connection = True
         if not send_body:
             return
-        last_mtime = None
-        last_sent = self.clock()
+        seen = None
+        last_write = time.monotonic()
         try:
             while True:
-                chunk = b""
-                try:
-                    mtime = self.snapshot_path.stat().st_mtime_ns
-                    if mtime != last_mtime:
-                        data = json.dumps(json.loads(self.snapshot_path.read_bytes()))
-                        last_mtime = mtime
-                        chunk = "event: snapshot\ndata: {}\n\n".format(data).encode("utf-8")
-                except (OSError, ValueError):
-                    pass  # missing or half-written file: try again on the next tick
-                if not chunk and self.clock() - last_sent >= STREAM_HEARTBEAT_SECONDS:
-                    chunk = b": keep-alive\n\n"
-                if chunk:
-                    self.wfile.write(chunk)
+                version = self._snapshot_version()
+                if version is not None and version != seen:
+                    event = self._stream_event()
+                    if event is not None:
+                        seen = version
+                        self.wfile.write(event)
+                        self.wfile.flush()
+                        last_write = time.monotonic()
+                elif time.monotonic() - last_write >= self.keepalive_seconds:
+                    self.wfile.write(b": keep-alive\n\n")
                     self.wfile.flush()
-                    last_sent = self.clock()
-                time.sleep(STREAM_POLL_SECONDS)
+                    last_write = time.monotonic()
+                time.sleep(self.poll_seconds)
         except (OSError, ValueError):
-            return  # client went away
+            return  # the client went away
 
     def _healthz(self, send_body: bool, detail: bool = False) -> None:
         try:
@@ -210,11 +264,15 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def make_server(host: str, port: int, *, web_dir: Path, snapshot_path: Path,
-                interval_seconds: int,
-                clock: Callable[[], float] = time.time) -> ThreadingHTTPServer:
+                interval_seconds: int, history_path: Path | None = None,
+                clock: Callable[[], float] = time.time,
+                keepalive_seconds: float = KEEPALIVE_SECONDS,
+                poll_seconds: float = STREAM_POLL_SECONDS) -> ThreadingHTTPServer:
     """Build the server; the caller runs ``serve_forever``."""
     handler = partial(Handler, web_dir=Path(web_dir), snapshot_path=Path(snapshot_path),
-                      max_age=STALE_INTERVALS * interval_seconds, clock=clock)
+                      max_age=STALE_INTERVALS * interval_seconds, clock=clock,
+                      history_path=Path(history_path) if history_path else None,
+                      keepalive_seconds=keepalive_seconds, poll_seconds=poll_seconds)
     server = ThreadingHTTPServer((host, port), handler)
     server.daemon_threads = True
     return server
@@ -236,6 +294,7 @@ def main(argv: list[str] | None = None) -> int:
     host = config.bind_host or lan_address()
     server = make_server(host, config.port, web_dir=Path(args.web_dir),
                          snapshot_path=config.data_dir / SNAPSHOT_FILE,
+                         history_path=config.data_dir / HISTORY_FILE,
                          interval_seconds=config.interval_seconds)
     print("serving on http://{}:{}".format(host, server.server_address[1]), flush=True)
     try:

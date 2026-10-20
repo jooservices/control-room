@@ -2,11 +2,21 @@
 
 import contextlib
 import datetime as dt
+import re
 import sqlite3
 from pathlib import Path
 from typing import Mapping
 
 RETENTION_DAYS = 90
+FIXED_METRICS = frozenset(
+    {"machine.load", "machine.mem_used", "flow.done24h", "flow.rework24h"}
+)
+AI_MINUTES_METRIC = re.compile(r"ai\.[A-Za-z0-9_-]+\.minutes24h")
+
+
+def is_known_metric(metric: str) -> bool:
+    """Tell whether ``metric`` is one of the series the history API serves."""
+    return metric in FIXED_METRICS or AI_MINUTES_METRIC.fullmatch(metric) is not None
 
 
 def snapshot_samples(snapshot: Mapping[str, object]) -> dict[str, float]:
@@ -29,9 +39,14 @@ def snapshot_samples(snapshot: Mapping[str, object]) -> dict[str, float]:
         samples["machine.workers_busy"] = float(machine.get("workersBusy", 0))
         for agent in snapshot["ai"]["agents"]:
             samples["ai.{}.runs24h".format(agent["id"])] = float(agent["runs24h"])
+            minutes = agent.get("minutes24h")
+            if minutes is not None:
+                samples["ai.{}.minutes24h".format(agent["id"])] = float(minutes)
     if ok.get("jira"):
         flow = snapshot["flow"]
         samples["flow.done24h"] = float(flow["doneLast24h"])
+        if flow.get("reworkLast24h") is not None:
+            samples["flow.rework24h"] = float(flow["reworkLast24h"])
         for status, number in flow["statusCounts"].items():
             samples["flow.status.{}".format(status)] = float(number)
         for row in snapshot["projects"]["list"]:
@@ -45,8 +60,11 @@ def snapshot_samples(snapshot: Mapping[str, object]) -> dict[str, float]:
 class HistoryStore:
     """Append-only samples ``(ts, metric, value)`` in one SQLite file."""
 
-    def __init__(self, path: str | Path):
+    def __init__(self, path: str | Path, read_only: bool = False):
         self.path = Path(path)
+        self.read_only = read_only
+        if read_only:
+            return
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as connection:
             connection.execute(
@@ -60,7 +78,12 @@ class HistoryStore:
     @contextlib.contextmanager
     def _connect(self):
         """Yield a connection that commits on success and always closes."""
-        connection = sqlite3.connect(self.path)
+        if self.read_only:
+            connection = sqlite3.connect(
+                "{}?mode=ro".format(self.path.resolve().as_uri()), uri=True
+            )
+        else:
+            connection = sqlite3.connect(self.path)
         try:
             with connection:
                 yield connection

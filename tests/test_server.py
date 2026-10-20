@@ -7,6 +7,7 @@ import time
 import unittest
 from pathlib import Path
 
+from controlroom.history import HistoryStore
 from controlroom.server import CONTENT_SECURITY_POLICY, lan_address, make_server
 
 
@@ -21,9 +22,16 @@ class ServerTests(unittest.TestCase):
         (root / "secret.txt").write_text("secret", encoding="utf-8")
         self.snapshot = root / "snapshot.json"
         self.snapshot.write_text('{"version":1}', encoding="utf-8")
+        self.history = root / "history.db"
+        self.now = int(time.time())
+        store = HistoryStore(self.history)
+        store.insert(self.now - 100 * 86400, {"machine.load": 9.0})
+        store.insert(self.now - 3600, {"machine.load": 1.5, "ai.codex.minutes24h": 12.0})
+        store.insert(self.now - 60, {"machine.load": 2.5})
         self.server = make_server(
             "127.0.0.1", 0, web_dir=self.web, snapshot_path=self.snapshot,
-            interval_seconds=10,
+            interval_seconds=10, history_path=self.history,
+            keepalive_seconds=0.3, poll_seconds=0.05,
         )
         self.port = self.server.server_address[1]
         thread = threading.Thread(target=self.server.serve_forever, daemon=True)
@@ -139,6 +147,66 @@ class ServerTests(unittest.TestCase):
         for path in ("/../secret.txt", "/%2e%2e/secret.txt", "/..%2fsecret.txt",
                      "/missing.html"):
             self.assertEqual(self.request("GET", path)[0], 404, path)
+
+    def points(self, query):
+        status, _, body = self.request("GET", "/api/history" + query)
+        self.assertEqual(status, 200)
+        return json.loads(body)
+
+    def test_history_returns_series_capped_at_90_days(self):
+        data = self.points("?metric=machine.load&since=0")
+        self.assertEqual([point[1] for point in data["points"]], [1.5, 2.5])
+        self.assertGreaterEqual(data["since"], self.now - 90 * 86400)
+        _, response, _ = self.request("GET", "/api/history?metric=machine.load")
+        self.assertEqual(response.getheader("Cache-Control"), "no-store")
+
+    def test_history_since_filters_and_ai_minutes(self):
+        data = self.points("?metric=machine.load&since=%d" % (self.now - 120))
+        self.assertEqual([point[1] for point in data["points"]], [2.5])
+        data = self.points("?metric=ai.codex.minutes24h")
+        self.assertEqual([point[1] for point in data["points"]], [12.0])
+
+    def test_history_rejects_bad_input_with_400(self):
+        for query in ("", "?metric=nope", "?metric=machine.load%3B--",
+                      "?metric=ai.x.runs24h", "?metric=machine.load&since=abc",
+                      "?metric=machine.load&since=9223372036854775808",
+                      "?metric=machine.load&since=-9223372036854775809"):
+            self.assertEqual(self.request("GET", "/api/history" + query)[0], 400, query)
+
+    def test_history_without_store_is_503(self):
+        self.history.unlink()
+        self.assertEqual(self.request("GET", "/api/history?metric=machine.load")[0], 503)
+
+    def read_event(self, response):
+        lines = []
+        while True:
+            line = response.fp.readline().decode("utf-8")
+            if line == "\n":
+                if lines:
+                    return lines
+                continue
+            lines.append(line.rstrip("\n"))
+
+    def test_stream_sends_event_after_snapshot_changes_and_keepalive(self):
+        connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        self.addCleanup(connection.close)
+        connection.request("GET", "/api/stream")
+        response = connection.getresponse()
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.getheader("Content-Type"),
+                         "text/event-stream; charset=utf-8")
+        self.assertEqual(response.getheader("Cache-Control"), "no-store")
+        self.assertEqual(self.read_event(response),
+                         ["event: snapshot", 'data: {"version":1}'])
+        self.assertEqual(self.read_event(response), [": keep-alive"])
+        self.snapshot.write_text('{"version":2}', encoding="utf-8")
+        later = time.time() + 5
+        os.utime(self.snapshot, (later, later))
+        while True:
+            lines = self.read_event(response)
+            if lines != [": keep-alive"]:
+                break
+        self.assertEqual(lines, ["event: snapshot", 'data: {"version":2}'])
 
     def test_lan_address_is_not_wildcard(self):
         self.assertNotEqual(lan_address(), "0.0.0.0")

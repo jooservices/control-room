@@ -265,6 +265,13 @@ class HistoryTest(unittest.TestCase):
         self.assertFalse([m for m in samples if m.startswith(("flow.", "project."))])
         full = snapshot_samples(assemble(all_results(), None, now=NOW))
         self.assertEqual(full["project.JOOCR.done"], 1.0)
+        self.assertTrue([m for m in full if m.startswith("ai.") and m.endswith(".minutes24h")])
+        self.assertNotIn("flow.rework24h", full)  # unknown (None) is not recorded
+
+    def test_rework_is_sampled_when_known(self):
+        snapshot = assemble(all_results(), None, now=NOW)
+        snapshot["flow"]["reworkLast24h"] = 2
+        self.assertEqual(snapshot_samples(snapshot)["flow.rework24h"], 2.0)
 
 
 class WriteSnapshotTest(unittest.TestCase):
