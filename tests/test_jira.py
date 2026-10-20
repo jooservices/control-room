@@ -134,6 +134,9 @@ class JiraSourceTest(unittest.TestCase):
             "status": "In Progress",
             "children": 3,
             "done": 2,
+            "_etaSamples": [],
+            "_etaRemaining": 1,
+            "_etaExcluded": [],
         }])
         self.assertEqual([ticket["key"] for ticket in project["active"]], [
             "DEMO-6", "DEMO-2"
@@ -141,6 +144,75 @@ class JiraSourceTest(unittest.TestCase):
         self.assertTrue(all(isinstance(t["labels"], list) for t in project["active"]))
         self.assertEqual(project["doneLast24h"], 1)
         self.assertTrue(project["onFlow"])
+        self.assertEqual(project["_etaCycleCache"], {"DEMO-3": None, "DEMO-4": None})
+
+    def test_eta_source_data_uses_finished_cycles_and_lists_excluded_work(self):
+        epic = copy.deepcopy(JiraFixtureHandler.search_page_1["issues"][0])
+        completed = copy.deepcopy(JiraFixtureHandler.search_page_1["issues"][2])
+        active = copy.deepcopy(JiraFixtureHandler.search_page_1["issues"][1])
+        epic_key = epic["key"]
+        issues = [epic]
+        histories = {}
+
+        for index, minutes in enumerate((60, 120, 180, 240, 300), start=10):
+            issue = copy.deepcopy(completed)
+            issue["key"] = "DEMO-{}".format(index)
+            issue["fields"]["parent"] = {"key": epic_key}
+            issues.append(issue)
+            start = NOW - dt.timedelta(minutes=minutes + 5)
+            finish = NOW - dt.timedelta(minutes=5)
+            histories[issue["key"]] = [
+                {"created": start.isoformat(), "items": [{"field": "status", "toString": "In Progress"}]},
+                {"created": finish.isoformat(), "items": [{"field": "status", "toString": "Done"}]},
+            ]
+
+        excluded = []
+        for index, status in enumerate(("Blocked", "Human review", "Ready to merge"), start=30):
+            issue = copy.deepcopy(active)
+            issue["key"] = "DEMO-{}".format(index)
+            issue["fields"]["parent"] = {"key": epic_key}
+            issue["fields"]["status"] = {"name": status}
+            issues.append(issue)
+            excluded.append((issue["key"], status))
+
+        remaining = copy.deepcopy(active)
+        remaining["key"] = "DEMO-40"
+        remaining["fields"]["parent"] = {"key": epic_key}
+        remaining["fields"]["status"] = {"name": "In Progress"}
+        issues.append(remaining)
+
+        held = copy.deepcopy(active)
+        held["key"] = "DEMO-41"
+        held["fields"]["parent"] = {"key": epic_key}
+        held["fields"]["labels"] = ["aiflow-hold"]
+        issues.append(held)
+
+        document = parse_projects_document(
+            {"DEMO": issues}, ["DEMO"], histories_by_issue=histories,
+            now=NOW, project_definitions=PROJECT_DEFINITIONS,
+        )
+        project = document["list"][0]
+
+        self.assertEqual(project["_etaSamples"], [60, 120, 180, 240, 300])
+        self.assertEqual(project["_etaRemaining"], 1)
+        self.assertEqual(
+            project["_etaCycleCache"],
+            {"DEMO-10": 60, "DEMO-11": 120, "DEMO-12": 180, "DEMO-13": 240, "DEMO-14": 300},
+        )
+        self.assertEqual(
+            [(item["key"], item["status"]) for item in project["_etaExcluded"]],
+            excluded,
+        )
+        self.assertEqual(project["epics"][0]["_etaSamples"], [60, 120, 180, 240, 300])
+        self.assertEqual(project["epics"][0]["_etaRemaining"], 1)
+        self.assertEqual(len(project["epics"][0]["_etaExcluded"]), 3)
+
+        non_flow = parse_projects_document(
+            {"DEMO": issues}, [], histories_by_issue=histories,
+            now=NOW, project_definitions=PROJECT_DEFINITIONS,
+        )["list"][0]
+        self.assertEqual(non_flow["_etaSamples"], [])
+        self.assertEqual(non_flow["_etaRemaining"], 0)
 
     def test_projects_document_limits_open_tickets_to_thirty_most_recent(self):
         base_issue = JiraFixtureHandler.search_page_2["issues"][2]
@@ -204,10 +276,10 @@ class JiraSourceTest(unittest.TestCase):
         self.assertEqual(
             parse_qs(search_requests[1].query)["nextPageToken"], ["next page/+2"]
         )
-        self.assertEqual(len(changelog_requests), 6)
+        self.assertEqual(len(changelog_requests), 7)
         self.assertEqual(
             {path.path.split("/")[-2] for path in changelog_requests},
-            {"DEMO-2", "DEMO-4", "DEMO-5", "DEMO-6"},
+            {"DEMO-2", "DEMO-3", "DEMO-4", "DEMO-5", "DEMO-6"},
         )
         self.assertEqual(projects["list"][0]["key"], "DEMO")
         self.assertEqual([event["key"] for event in events], ["DEMO-2", "DEMO-2"])
@@ -223,6 +295,17 @@ class JiraSourceTest(unittest.TestCase):
         self.assertFalse(
             any("/changelog" in path for path in JiraFixtureHandler.request_paths)
         )
+
+    def test_collection_reuses_cached_cycle_data_for_older_completed_tickets(self):
+        projects, _events = collect_jira(
+            self.make_config(), ["DEMO"], now=NOW,
+            cycle_cache_by_project={"DEMO": {"DEMO-3": 120}},
+            project_definitions=PROJECT_DEFINITIONS,
+        )
+
+        self.assertFalse(any("/DEMO-3/changelog" in path for path in JiraFixtureHandler.request_paths))
+        self.assertIn(120, projects["list"][0]["_etaSamples"])
+        self.assertEqual(projects["list"][0]["_etaCycleCache"]["DEMO-3"], 120)
 
 
 if __name__ == "__main__":

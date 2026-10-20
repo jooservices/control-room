@@ -8,6 +8,7 @@ from urllib.parse import quote, urlencode, urljoin
 
 from controlroom import http
 from controlroom.config import Config
+from controlroom.model import ETA_EXCLUDED_STATUSES, FLOW_STATUSES, HOLD_LABEL
 
 
 # Jira project metadata follows the existing collector prototype. Each tuple is
@@ -42,15 +43,17 @@ def collect_jira(
     flow_project_keys: Sequence[str],
     *,
     now: dt.datetime,
+    cycle_cache_by_project: Mapping[str, Mapping[str, float | None]] | None = None,
     project_definitions: Mapping[str, tuple[str, str, int | None]] = PROJECTS,
 ) -> tuple[dict[str, object], list[dict[str, str]]]:
     """Return the projects document and recent status events.
 
     Issue searches cover every configured project. Changelogs are requested
-    only for issues updated in the last day and only when their project key is
-    in ``flow_project_keys``.
+    for recently updated flow-project issues and completed flow-project
+    tickets missing from the persisted ETA cycle cache.
     """
     flow_keys = _validated_flow_keys(flow_project_keys, project_definitions)
+    cycle_cache = cycle_cache_by_project or {}
     _require_aware(now)
 
     issues_by_project = {}
@@ -64,7 +67,17 @@ def collect_jira(
 
         for issue in issues:
             updated = _parse_jira_datetime(issue["fields"]["updated"])
-            if cutoff <= updated <= now.astimezone(_UTC):
+            fields = issue["fields"]
+            status_name = (fields.get("status") or {}).get("name", "")
+            issue_type = (fields.get("issuetype") or {}).get("name", "")
+            if (
+                cutoff <= updated <= now.astimezone(_UTC)
+                or (
+                    status_name == "Done"
+                    and issue_type.casefold() != "epic"
+                    and issue["key"] not in cycle_cache.get(project_key, {})
+                )
+            ):
                 histories_by_issue[issue["key"]] = _fetch_issue_changelogs(
                     config, issue["key"]
                 )
@@ -73,6 +86,8 @@ def collect_jira(
         parse_projects_document(
             issues_by_project,
             flow_keys,
+            histories_by_issue=histories_by_issue,
+            cycle_cache_by_project=cycle_cache,
             now=now,
             project_definitions=project_definitions,
         ),
@@ -117,11 +132,15 @@ def parse_projects_document(
     issues_by_project: Mapping[str, Sequence[dict[str, object]]],
     flow_project_keys: Sequence[str],
     *,
+    histories_by_issue: Mapping[str, Sequence[dict[str, object]]] | None = None,
+    cycle_cache_by_project: Mapping[str, Mapping[str, float | None]] | None = None,
     now: dt.datetime,
     project_definitions: Mapping[str, tuple[str, str, int | None]] = PROJECTS,
 ) -> dict[str, object]:
-    """Build the prototype-compatible projects document without HTTP calls."""
+    """Build project summaries and raw ETA inputs without HTTP calls."""
     flow_keys = set(flow_project_keys)
+    histories = histories_by_issue or {}
+    old_cycle_cache = cycle_cache_by_project or {}
     current_time = _require_aware(now).astimezone(_UTC)
     cutoff = current_time - dt.timedelta(hours=24)
     projects = []
@@ -134,6 +153,13 @@ def parse_projects_document(
         open_tickets = []
         done_tickets = []
         updates = []
+        eta_samples = []
+        eta_remaining = 0
+        eta_excluded = []
+        eta_cycle_cache = {}
+        epic_samples = defaultdict(list)
+        epic_remaining = Counter()
+        epic_excluded = defaultdict(list)
 
         for issue in issues:
             fields = issue["fields"]
@@ -147,21 +173,50 @@ def parse_projects_document(
                 updates.append((updated, updated_raw))
 
             if issue_type.casefold() == "epic":
-                epics.append(
-                    {
-                        "key": issue["key"],
-                        "summary": (fields.get("summary") or "")[:90],
-                        "status": status_name,
-                        "children": 0,
-                        "done": 0,
-                    }
-                )
+                epic = {
+                    "key": issue["key"],
+                    "summary": (fields.get("summary") or "")[:90],
+                    "status": status_name,
+                    "children": 0,
+                    "done": 0,
+                    "_etaSamples": [],
+                    "_etaRemaining": 0,
+                    "_etaExcluded": [],
+                }
+                epics.append(epic)
                 continue
 
             parent = fields.get("parent") or {}
             parent_key = parent.get("key") if isinstance(parent, dict) else None
             if parent_key:
                 children_by_epic[parent_key].append(status_name)
+
+            if project_key in flow_keys:
+                if status_name == "Done":
+                    cycle = None
+                    if issue["key"] in histories:
+                        cycle = _cycle_minutes(issue, histories[issue["key"]])
+                    if cycle is None:
+                        cycle = old_cycle_cache.get(project_key, {}).get(issue["key"])
+                    eta_cycle_cache[issue["key"]] = cycle
+                    if cycle is not None:
+                        eta_samples.append(cycle)
+                        if parent_key:
+                            epic_samples[parent_key].append(cycle)
+                elif status_name in FLOW_STATUSES:
+                    if status_name in ETA_EXCLUDED_STATUSES:
+                        excluded = {
+                            "key": issue["key"],
+                            "summary": (fields.get("summary") or "")[:100],
+                            "status": status_name,
+                        }
+                        eta_excluded.append(excluded)
+                        if parent_key:
+                            epic_excluded[parent_key].append(excluded)
+                    elif HOLD_LABEL not in (fields.get("labels") or []):
+                        eta_remaining += 1
+                        if parent_key:
+                            epic_remaining[parent_key] += 1
 
             if status_name == "Done" and updated is not None:
                 done_tickets.append((updated, issue))
@@ -173,6 +228,9 @@ def parse_projects_document(
             child_statuses = children_by_epic.get(epic["key"], [])
             epic["children"] = len(child_statuses)
             epic["done"] = sum(status == "Done" for status in child_statuses)
+            epic["_etaSamples"] = epic_samples[epic["key"]]
+            epic["_etaRemaining"] = epic_remaining[epic["key"]]
+            epic["_etaExcluded"] = epic_excluded[epic["key"]]
 
         active = [
             _active_ticket(issue)
@@ -221,10 +279,39 @@ def parse_projects_document(
                 "openPRs": [],
                 "lastUpdate": last_update[:16],
                 "onFlow": project_key in flow_keys,
+                "_etaSamples": eta_samples,
+                "_etaRemaining": eta_remaining,
+                "_etaExcluded": eta_excluded,
+                "_etaCycleCache": eta_cycle_cache,
             }
         )
 
     return {"list": projects}
+
+
+def _cycle_minutes(
+    issue: dict[str, object], histories: Sequence[dict[str, object]]
+) -> float | None:
+    """Return the first In Progress-to-Done cycle for a currently Done ticket."""
+    fields = issue["fields"]
+    if (fields.get("status") or {}).get("name") != "Done":
+        return None
+    if (fields.get("issuetype") or {}).get("name", "").casefold() == "epic":
+        return None
+
+    started = None
+    ordered = sorted(histories, key=lambda item: _parse_jira_datetime(item["created"]))
+    for history in ordered:
+        changed_at = _parse_jira_datetime(history["created"])
+        for item in history.get("items", ()):
+            if item.get("field") != "status":
+                continue
+            if item.get("toString") == "In Progress" and started is None:
+                started = changed_at
+            elif item.get("toString") == "Done" and started is not None:
+                minutes = (changed_at - started).total_seconds() / 60
+                return minutes if minutes >= 0 else None
+    return None
 
 
 def parse_status_events(
