@@ -148,7 +148,11 @@ def run_once(
     samples = snapshot_samples(snapshot)
     if samples:
         store.insert(int(now.timestamp()), samples)
+    machine_result = results.get("machine")
+    if isinstance(machine_result, Mapping):
+        store.record_runs(machine_result.get("usage") or [])
     store.prune(now)
+    snapshot["ai"]["usage"] = store.usage_panel(int(now.timestamp()))
     snapshot["machine"]["history"] = store.machine_history()
     snapshot["meta"]["collector"] = collector_meta(
         snapshot, previous, time.monotonic() - began, version

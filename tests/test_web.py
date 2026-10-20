@@ -14,7 +14,7 @@ from controlroom.server import make_server
 WEB = Path(__file__).resolve().parent.parent / "web"
 PLACEHOLDER_IDS = {
     "live", "liveText", "srcwarn", "theme", "kpis", "tl", "tlnote", "legend", "fun", "funnote", "ptable",
-    "aitable", "ainote", "machine", "gauges", "spark", "mkv", "chips", "event-project", "feed", "scrim", "drawer",
+    "aitable", "ainote", "usagetable", "machine", "gauges", "spark", "mkv", "chips", "event-project", "feed", "scrim", "drawer",
 }
 
 
