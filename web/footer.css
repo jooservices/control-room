@@ -1,4 +1,4 @@
-#collector-footer { font: 12px/1.4 system-ui, sans-serif; color: #667; padding: 8px 12px; }
+#collector-footer { font: 12px/1.4 var(--f-body, system-ui, sans-serif); color: var(--ink-2, #5a6876); padding: 8px 12px; overflow-wrap: anywhere; }
 #collector-footer span + span { margin-left: 12px; }
-#collector-footer.stale { color: #b36b00; }
-#collector-footer.old { color: #b00020; }
+#collector-footer.stale { color: var(--wait, #8a5a00); }
+#collector-footer.old { color: var(--blocked, #c0392b); }

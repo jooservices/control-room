@@ -21,10 +21,18 @@
   }
   setInterval(liveBadge, 1000);
   const SRC = { jira: 'Jira', github: 'GitHub', machine: 'Worker machine' };
+  let DOWN = new Set(), bannerSig = '';
+  const isDown = list => list.some(k => DOWN.has(k));
+  const when = iso => new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   function sources() {
-    const ok = (DOCS && DOCS.meta && DOCS.meta.ok) || {}, bad = Object.keys(ok).filter(k => ok[k] === false);
-    const el = $('#srcwarn'); if (!el) return;
-    el.hidden = !bad.length; el.textContent = bad.length ? 'Last collection failed for ' + bad.map(k => SRC[k] || k).join(', ') + '; its figures may be stale.' : '';
+    const bad = CRLib.downSources(DOCS && DOCS.meta, Date.now()); DOWN = new Set(bad.map(b => b.key));
+    const el = $('#srcbanner'); if (!el) return;
+    const sig = bad.map(b => b.key + '@' + b.since).join('|');
+    if (sig !== bannerSig) { // rewrite only on a change, so a screen reader does not repeat it with every snapshot
+      bannerSig = sig; el.hidden = !bad.length;
+      el.innerHTML = bad.length ? '<b>' + (bad.length === 1 ? 'A source is down' : bad.length + ' sources are down') + '.</b> The panels that read from it show the last known data marked stale.<ul>' + bad.map(b => '<li><b>' + esc(SRC[b.key] || b.key) + '</b> ' + (b.since ? 'down since <time datetime="' + esc(b.since) + '">' + esc(when(b.since)) + '</time> (' + CRLib.ago(b.age) + ' ago)' : 'down, start time unknown') + '</li>').join('') + '</ul>' : '';
+    }
+    document.querySelectorAll('.card[data-src]').forEach(c => { const st = isDown(c.dataset.src.split(' ')); c.classList.toggle('is-stale', st); const tag = c.querySelector('.stale-tag'); if (tag) tag.hidden = !st; });
   }
 
   /* ---------- KPIs ---------- */
@@ -32,15 +40,15 @@
     const f = DOCS.flow, m = DOCS.machine; const inf = f.inflight; const by = s => inf.filter(t => t.status === s).length;
     const working = (m.workersBusy || 0); const waiting = by('Human review') + by('Ready to merge') + by('Blocked');
     const items = [
-      ['Working now', working + (m.workersTotal ? ' / ' + m.workersTotal : ''), working ? 'AI steps holding a worker' : 'workers idle', 'var(--run)'],
-      ['In the flow', inf.filter(t => t.status !== 'Blocked').length, 'To Do through Ready to merge', 'var(--todo)'],
-      ['Waiting for owner', waiting, by('Human review') + by('Ready to merge') + ' approval · ' + by('Blocked') + ' blocked', 'var(--human)'],
-      ['Done, 24 hours', f.doneLast24h, f.doneByAiLast24h + ' worked by an AI, the rest closed by hand', 'var(--done)'],
-      ['Merged PRs, 24 hours', f.mergedPRs24h, f.watched.join(' and ') + ' repositories', 'var(--done)'],
-      ['Typical time', f.cycle.p50 == null ? '–' : fmtMin(f.cycle.p50), 'In Progress to Done, ' + f.cycle.n + ' tickets (' + fmtMin(f.cycle.p25) + ' to ' + fmtMin(f.cycle.p75) + ')', 'var(--accent)'],
-      ['Rework, 24 hours', f.reworkLast24h, 'tickets sent back to To Do', 'var(--wait)'],
-      ['Machine load', m.load ? m.load[0].toFixed(1) : '–', 'of ' + m.cpus + ' CPUs · ' + (f.paused ? 'PAUSED' : 'running'), f.paused ? 'var(--blocked)' : 'var(--run)']];
-    $('#kpis').innerHTML = items.map(([l, v, s, c]) => '<div class="kpi" data-css="--c:' + c + '"><span>' + l + '</span><b>' + v + '</b><small>' + esc(s) + '</small></div>').join('');
+      ['Working now', working + (m.workersTotal ? ' / ' + m.workersTotal : ''), working ? 'AI steps holding a worker' : 'workers idle', 'var(--run)', ['machine']],
+      ['In the flow', inf.filter(t => t.status !== 'Blocked').length, 'To Do through Ready to merge', 'var(--todo)', ['jira', 'machine']],
+      ['Waiting for owner', waiting, by('Human review') + by('Ready to merge') + ' approval · ' + by('Blocked') + ' blocked', 'var(--human)', ['jira', 'machine']],
+      ['Done, 24 hours', f.doneLast24h, f.doneByAiLast24h + ' worked by an AI, the rest closed by hand', 'var(--done)', ['jira', 'machine']],
+      ['Merged PRs, 24 hours', f.mergedPRs24h, f.watched.join(' and ') + ' repositories', 'var(--done)', ['github', 'machine']],
+      ['Typical time', f.cycle.p50 == null ? '–' : fmtMin(f.cycle.p50), 'In Progress to Done, ' + f.cycle.n + ' tickets (' + fmtMin(f.cycle.p25) + ' to ' + fmtMin(f.cycle.p75) + ')', 'var(--accent)', ['jira']],
+      ['Rework, 24 hours', f.reworkLast24h, 'tickets sent back to To Do', 'var(--wait)', ['jira']],
+      ['Machine load', m.load ? m.load[0].toFixed(1) : '–', 'of ' + m.cpus + ' CPUs · ' + (f.paused ? 'PAUSED' : 'running'), f.paused ? 'var(--blocked)' : 'var(--run)', ['machine']]];
+    $('#kpis').innerHTML = items.map(([l, v, s, c, src]) => isDown(src) ? '<div class="kpi is-stale" data-css="--c:var(--blocked)"><span>' + l + '</span><b>stale</b><small>' + esc(SRC[src.find(k => DOWN.has(k))]) + ' is down; last known value hidden</small></div>' : '<div class="kpi" data-css="--c:' + c + '"><span>' + l + '</span><b>' + v + '</b><small>' + esc(s) + '</small></div>').join('');
   }
 
   /* ---------- timeline ---------- */
@@ -54,13 +62,14 @@
     const my = T + lanes * (laneH + 4); h += '<rect x="' + L0 + '" y="' + my + '" width="' + (W - L0 - 8) + '" height="' + laneH + '" rx="4" fill="var(--panel-2)"/><text class="lane-label" x="8" y="' + (my + laneH / 2 + 4) + '">Merges</text>';
     const first = Math.ceil(t0 / 1800) * 1800; for (let m = first; m <= now; m += 1800) { const xx = x(m); h += '<line class="tick" x1="' + xx + '" x2="' + xx + '" y1="' + T + '" y2="' + (my + laneH) + '"/><text class="tick-l" x="' + xx + '" y="' + (H - 8) + '" text-anchor="middle">' + clock(m * 1000) + '</text>'; }
     placed.forEach(({ r, lane }) => { const xs = Math.max(L0, x(r.start)), xe = Math.min(W - 8, x(r.end)); if (xe - xs < 1.5) return; const y = T + lane * (laneH + 4) + 5, hh = laneH - 10, wide = xe - xs > 52;
-      h += '<g class="seg-bar" data-k="' + r.key + '"><title>' + r.key + ' · ' + r.ai + ' ' + r.role + ' · ' + r.minutes + ' min' + (r.ok ? '' : ' · ended badly') + '</title><rect x="' + xs.toFixed(1) + '" y="' + y + '" width="' + (xe - xs).toFixed(1) + '" height="' + hh + '" rx="3" fill="' + (ROLE_COLOR[r.role] || 'var(--run)') + '"' + (r.ok ? '' : ' stroke="var(--blocked)" stroke-width="2"') + '/>' + (wide ? '<text class="seg-t" x="' + (xs + 4).toFixed(1) + '" y="' + (y + 13) + '">' + r.key + '</text><text class="seg-t" data-css="opacity:.75" x="' + (xs + 4).toFixed(1) + '" y="' + (y + 25) + '">' + r.ai + ' ' + r.role.slice(0, 3) + '</text>' : '') + '</g>'; });
-    merges.forEach(m => { const xx = x(new Date(m.at).getTime() / 1000); if (xx < L0) return; h += '<a href="' + m.url + '" target="_blank" rel="noopener noreferrer"><title>PR #' + m.number + ' · ' + esc(m.title) + '</title><path d="M' + xx + ' ' + (my + 6) + 'l7 ' + (laneH / 2 - 6) + 'l-7 ' + (laneH / 2 - 6) + 'l-7 -' + (laneH / 2 - 6) + 'z" fill="var(--done)"/></a>'; });
+      const k = esc(r.key), ai = esc(r.ai), role = esc(r.role), mins = esc(r.minutes), label = k + ', ' + ai + ' ' + role + ', ' + mins + ' min' + (r.ok ? '' : ', ended badly');
+      h += '<g class="seg-bar" data-k="' + k + '" tabindex="0" role="button" aria-label="' + label + '"><title>' + label + '</title><rect x="' + xs.toFixed(1) + '" y="' + y + '" width="' + (xe - xs).toFixed(1) + '" height="' + hh + '" rx="3" fill="' + (ROLE_COLOR[r.role] || 'var(--run)') + '"' + (r.ok ? '' : ' stroke="var(--blocked)" stroke-width="2"') + '/>' + (wide ? '<text class="seg-t" x="' + (xs + 4).toFixed(1) + '" y="' + (y + 13) + '">' + k + '</text><text class="seg-t" x="' + (xs + 4).toFixed(1) + '" y="' + (y + 25) + '">' + ai + ' ' + esc(String(r.role).slice(0, 3)) + (r.ok ? '' : ' ✗') + '</text>' : '') + '</g>'; });
+    merges.forEach(m => { const xx = x(new Date(m.at).getTime() / 1000); if (xx < L0) return; h += '<a href="' + esc(m.url) + '" target="_blank" rel="noopener noreferrer"><title>PR #' + m.number + ' · ' + esc(m.title) + '</title><path d="M' + xx + ' ' + (my + 6) + 'l7 ' + (laneH / 2 - 6) + 'l-7 ' + (laneH / 2 - 6) + 'l-7 -' + (laneH / 2 - 6) + 'z" fill="var(--done)"/></a>'; });
     h += '<line class="now" x1="' + x(now) + '" x2="' + x(now) + '" y1="' + (T - 4) + '" y2="' + (my + laneH + 2) + '"/>';
     $('#tl').innerHTML = h; $('#tl').querySelectorAll('.seg-bar').forEach(g => g.onclick = () => openTicket(g.dataset.k));
     $('#tlnote').textContent = runs.length ? runs.length + ' AI runs and ' + merges.length + ' merges in the last 6 hours · click a bar' : 'no AI run in the last 6 hours';
   }
-  $('#legend').innerHTML = [['Developer', 'var(--run)'], ['Reviewer', 'var(--todo)'], ['QA', 'var(--wait)'], ['Merged pull request', 'var(--done)'], ['Red outline: the run ended badly', 'var(--blocked)']].map(([l, c]) => '<span><i data-css="background:' + c + '"></i>' + l + '</span>').join('');
+  $('#legend').innerHTML = [['Developer', 'var(--run)'], ['Reviewer', 'var(--todo)'], ['QA', 'var(--wait)'], ['Merged pull request', 'var(--done)'], ['Red outline and ✗: the run ended badly', 'var(--blocked)']].map(([l, c]) => '<span><i data-css="background:' + c + '"></i>' + l + '</span>').join('');
 
   /* ---------- tickets now ---------- */
   function funnel() {
@@ -80,7 +89,7 @@
     const rows = P().filter(p => p.total > 0).map(p => { const c = p.counts, declined = c.Declined || 0, tot = p.total - declined, done = c.Done || 0; return { p, tot, done, prog: done / Math.max(1, tot), open: p.total - declined - done }; });
     const f = { name: r => r.p.name.toLowerCase(), prog: r => r.prog, open: r => r.open }[sortKey]; rows.sort((a, b) => (f(a) > f(b) ? 1 : f(a) < f(b) ? -1 : 0) * sortDir * (sortKey === 'name' ? -1 : 1));
     $('#ptable tbody').innerHTML = rows.map(r => { const p = r.p, c = p.counts, seg = [['Done', 'var(--done)'], ['In QA', 'var(--wait)'], ['Human review', 'var(--human)'], ['In Review', 'var(--run)'], ['In Progress', 'var(--run)'], ['To Do', 'var(--todo)'], ['Blocked', 'var(--blocked)'], ['Backlog', 'var(--backlog)']];
-      return '<tr class="row" data-p="' + p.key + '"><td><b>' + esc(p.name) + '</b> ' + (p.onFlow ? '<span class="pill" data-css="--c:var(--run)">on the flow</span>' : '') + '<div class="mono" data-css="color:var(--ink-2)">' + p.key + '</div></td><td><div class="stack" title="' + esc(Object.entries(c).map(([k, v]) => k + ' ' + v).join(', ')) + '">' + seg.map(([k, col]) => '<i data-css="width:' + ((c[k] || 0) / p.total * 100) + '%;background:' + col + '"></i>').join('') + '</div></td><td class="num">' + Math.round(r.prog * 100) + '%<div class="meter" data-css="width:70px"><i data-css="width:' + r.prog * 100 + '%"></i></div></td><td class="num">' + r.open + '</td><td class="num">' + esc(etaText(p, p.onFlow)) + '</td><td class="num">' + esc((p.lastUpdate || '').replace('T', ' ')) + '</td><td class="xl"><a href="' + L.board(p) + '" target="_blank" rel="noopener noreferrer">Board</a><a href="' + L.repo(p) + '" target="_blank" rel="noopener noreferrer">Repo</a></td></tr>'; }).join('');
+      return '<tr class="row" tabindex="0" data-p="' + p.key + '"><td><b>' + esc(p.name) + '</b> ' + (p.onFlow ? '<span class="pill" data-css="--c:var(--run)">on the flow</span>' : '') + '<div class="mono" data-css="color:var(--ink-2)">' + p.key + '</div></td><td><div class="stack" title="' + esc(Object.entries(c).map(([k, v]) => k + ' ' + v).join(', ')) + '">' + seg.map(([k, col]) => '<i data-css="width:' + ((c[k] || 0) / p.total * 100) + '%;background:' + col + '"></i>').join('') + '</div></td><td class="num">' + Math.round(r.prog * 100) + '%<div class="meter" data-css="width:70px"><i data-css="width:' + r.prog * 100 + '%"></i></div></td><td class="num">' + r.open + '</td><td class="num">' + esc(etaText(p, p.onFlow)) + '</td><td class="num">' + esc((p.lastUpdate || '').replace('T', ' ')) + '</td><td class="xl"><a href="' + L.board(p) + '" target="_blank" rel="noopener noreferrer">Board</a><a href="' + L.repo(p) + '" target="_blank" rel="noopener noreferrer">Repo</a></td></tr>'; }).join('');
     $('#ptable tbody').querySelectorAll('tr.row').forEach(tr => tr.onclick = e => { if (!e.target.closest('.xl')) openProject(tr.dataset.p); });
   }
   document.querySelectorAll('#ptable th button').forEach(b => b.onclick = () => { if (sortKey === b.dataset.s) sortDir = -sortDir; else { sortKey = b.dataset.s; sortDir = b.dataset.s === 'name' ? 1 : -1; } projectRows(); });
@@ -88,7 +97,7 @@
   /* ---------- AI, machine, events ---------- */
   function aiTable() {
     $('#aitable tbody').innerHTML = DOCS.ai.agents.map(a => { const st = !a.usable ? ['out of pool', 'var(--blocked)'] : a.cooling ? ['cooling', 'var(--wait)'] : ['ready', 'var(--done)'];
-      return '<tr class="row" data-a="' + a.id + '"><td><b>' + a.name + '</b><div class="mono" data-css="color:var(--ink-2)">' + esc(a.model) + (a.effort !== 'default' ? ' · ' + a.effort : '') + '</div></td><td><span class="pill" data-css="--c:' + st[1] + '">' + st[0] + '</span></td><td class="num">' + a.runs24h + (a.bad24h ? ' (' + a.bad24h + ' bad)' : '') + '</td><td class="num">' + Math.round(a.minutes24h) + '</td></tr>'; }).join('');
+      return '<tr class="row" tabindex="0" data-a="' + a.id + '"><td><b>' + a.name + '</b><div class="mono" data-css="color:var(--ink-2)">' + esc(a.model) + (a.effort !== 'default' ? ' · ' + a.effort : '') + '</div></td><td><span class="pill" data-css="--c:' + st[1] + '">' + st[0] + '</span></td><td class="num">' + a.runs24h + (a.bad24h ? ' (' + a.bad24h + ' bad)' : '') + '</td><td class="num">' + Math.round(a.minutes24h) + '</td></tr>'; }).join('');
     $('#aitable tbody').querySelectorAll('tr.row').forEach(tr => tr.onclick = () => openAI(tr.dataset.a));
     const down = DOCS.ai.agents.filter(a => !a.usable); $('#ainote').textContent = down.length ? down.map(a => a.name + ': ' + a.probe).join(' · ') + ' (replaced by another AI automatically)' : 'All AIs passed the last sign-in probe.';
   }
@@ -132,6 +141,14 @@
 
   /* ---------- drawer ---------- */
   const links = a => '<div class="links">' + a.map(l => '<a href="' + l[1] + '" target="_blank" rel="noopener noreferrer">' + l[0] + '</a>').join('') + '</div>';
+  let drawerHtml = '';
+  /* A selector that finds the same control again after the page was re-rendered (rows are rebuilt with every snapshot). */
+  function keyOf(el) {
+    if (!el || el === document.body || !el.dataset) return null;
+    if (el.id) return '#' + el.id; if (el.classList.contains('x')) return '#drawer .x';
+    const a = ['p', 'a', 'k', 's', 'f'].find(n => el.dataset[n] != null); if (!a) return null;
+    return (el.closest('#drawer') ? '#drawer ' : el.closest('#feed') ? '#feed ' : '') + el.tagName.toLowerCase() + '[data-' + a + '="' + el.dataset[a] + '"]';
+  }
   function openDrawer() {
     const drawer = $('#drawer');
     if (!drawer.classList.contains('open')) drawerOpener = document.activeElement;
@@ -140,7 +157,7 @@
   }
   function closeDrawer() {
     const drawer = $('#drawer');
-    sel = null; drawer.classList.remove('open'); drawer.setAttribute('aria-hidden', 'true'); drawer.setAttribute('inert', ''); $('#scrim').classList.remove('open');
+    sel = null; drawerHtml = ''; drawer.classList.remove('open'); drawer.setAttribute('aria-hidden', 'true'); drawer.setAttribute('inert', ''); $('#scrim').classList.remove('open');
     const target = drawerOpener && drawerOpener.isConnected ? drawerOpener : $('#event-project');
     if (target) target.focus();
     drawerOpener = null;
@@ -157,6 +174,12 @@
     else if (!drawer.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
     else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
     else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
+  document.addEventListener('keydown', e => {
+    const t = e.target;
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    if (t.matches && t.matches('tr.row')) { e.preventDefault(); t.click(); }
+    else if (t.matches && t.matches('g.seg-bar')) { e.preventDefault(); openTicket(t.dataset.k); }
   });
   const openTicket = k => { sel = { t: 'ticket', k }; renderDrawer(); openDrawer(); }, openProject = k => { sel = { t: 'project', k }; renderDrawer(); openDrawer(); }, openAI = k => { sel = { t: 'ai', k }; renderDrawer(); openDrawer(); };
   function openTarget(type, key) {
@@ -203,7 +226,8 @@
       h += '<dl class="kv"><dt>Used for</dt><dd>' + esc(a.roles) + '</dd><dt>Sign-in probe</dt><dd>' + esc(a.probe) + '</dd><dt>Runs, 24 h</dt><dd>' + a.runs24h + ' (' + a.bad24h + ' ended badly)</dd><dt>Minutes, 24 h</dt><dd>' + a.minutes24h + '</dd><dt>Runs, since logging began</dt><dd>' + (a.runsAll == null ? 'not recorded' : a.runsAll + ' · ' + a.minutesAll + ' min · ' + a.badAll + ' ended badly') + '</dd></dl>';
       const v = DOCS.ai.versions; const mine = Object.values(v)[0]; if (mine && mine[a.id]) h += '<p class="mono" data-css="color:var(--ink-2)">CLI version ' + esc(mine[a.id]) + '</p>';
     }
-    d.innerHTML = h;
+    if (h === drawerHtml) return; // unchanged: keep focus and scroll where they are
+    drawerHtml = h; d.innerHTML = h;
     const title = d.querySelector('h3'); if (title) title.id = 'drawer-title';
     d.querySelector('.x').onclick = closeDrawer;
     d.querySelectorAll('button[data-k]').forEach(b => b.onclick = () => openTicket(b.dataset.k));
@@ -211,8 +235,10 @@
 
   $('#theme').onclick = () => { const cur = document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'); document.documentElement.dataset.theme = cur === 'dark' ? 'light' : 'dark'; };
   function render() {
+    const focused = keyOf(document.activeElement);
     [liveBadge, sources, kpis, timeline, funnel, projectRows, aiTable, machine, eventFilters, feed].forEach(f => { try { f(); } catch (e) { console.error(f.name, e); } });
     if (sel) { try { const keep = $('#drawer').scrollTop; renderDrawer(); $('#drawer').scrollTop = keep; } catch (e) { console.error('drawer', e); } }
+    if (focused && document.activeElement !== document.querySelector(focused)) { const el = document.querySelector(focused); if (el) el.focus(); }
   }
   liveBadge();
 

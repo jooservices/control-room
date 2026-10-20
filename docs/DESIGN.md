@@ -38,11 +38,11 @@ Keep `DATA_DIR` and `.env` when upgrading the checkout. The application has no d
 
 ## Freshness and failures
 
-The collector records `meta.asOf`, `meta.ok`, and `meta.errorAt`. A source failure keeps that source's last known section while other successful sources update; `meta.ok` identifies the sources that succeeded in the latest loop. `errorAt` records the last failure time and clears when that source recovers. `meta.asOf` advances if at least one source succeeds, and stays at its previous value if all sources fail.
+The collector records `meta.asOf`, `meta.ok`, and `meta.errorAt`. A source failure keeps that source's last known section while other successful sources update; `meta.ok` identifies the sources that succeeded in the latest loop. `errorAt` records the last failure time and clears when that source recovers. `downSince` records the first failure of the current outage, stays unchanged while the source remains down, and clears on recovery. `meta.asOf` advances if at least one source succeeds, and stays at its previous value if all sources fail.
 
 `/healthz` compares the snapshot file modification time with three configured collection intervals. It returns 200 for a recent file and 503 for a missing or old one. This measures collector writes, not source freshness: the collector may keep writing a snapshot when every upstream source fails. `/healthz?detail=1` reports source results, `asOf`, and collector metadata so operators can distinguish these cases.
 
-The page shows source failures in a warning. It marks `meta.asOf` amber after 180 seconds and red after 900 seconds. This threshold is separate from `/healthz`; for example, the page can report old data while the collector continues writing snapshots. See the [runbook](RUNBOOK.md) for the operational meaning of each status and recovery steps.
+The page lists each source with `meta.ok` false in a banner with the time it has been down (`meta.downSince`), and marks the panels that read from that source as stale: KPI tiles show the word "stale" instead of the last known number, and cards get a "stale" tag and a dashed border. Colour is never the only signal. The layout works from 360 px wide, every control is reachable by keyboard with a visible focus ring, and all text pairs in both themes keep a contrast of at least 4.5:1 (`tests/test_web.py` computes the ratios from `web/style.css`). It marks `meta.asOf` amber after 180 seconds and red after 900 seconds. This threshold is separate from `/healthz`; for example, the page can report old data while the collector continues writing snapshots. See the [runbook](RUNBOOK.md) for the operational meaning of each status and recovery steps.
 
 ## Deployment and constraints
 
