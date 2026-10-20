@@ -174,7 +174,7 @@ def parse_query_result(result: object, *, now: dt.datetime) -> dict[str, object]
                 }
             )
 
-    intervals = _status_intervals(status_events)
+    intervals = _status_intervals(status_events, current)
     return {
         "statusMedianMinutes": _status_medians(intervals, current),
         "usageByRole": _usage_totals(runs, token_events, current),
@@ -301,7 +301,9 @@ def _optional_text(value: object) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
-def _status_intervals(events: list[dict[str, object]]) -> list[dict[str, object]]:
+def _status_intervals(
+    events: list[dict[str, object]], now: dt.datetime
+) -> list[dict[str, object]]:
     by_ticket: dict[str, list[dict[str, object]]] = defaultdict(list)
     for event in events:
         by_ticket[event["key"]].append(event)
@@ -313,7 +315,9 @@ def _status_intervals(events: list[dict[str, object]]) -> list[dict[str, object]
             # A repeated status event is a duplicate, not a new stay.
             if not ordered or ordered[-1]["status"] != event["status"]:
                 ordered.append(event)
-        for previous, following in zip(ordered, ordered[1:]):
+        # The latest status is still open: it runs until collection time.
+        closing = ordered[1:] + [{"at": now}]
+        for previous, following in zip(ordered, closing):
             seconds = (following["at"] - previous["at"]).total_seconds()
             if seconds > 0:
                 intervals.append(

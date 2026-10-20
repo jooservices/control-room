@@ -40,17 +40,19 @@ class ParseEventsTest(unittest.TestCase):
         self.assertEqual(
             result["statusMedianMinutes"],
             {
-                "24h": {"In Progress": 120.0, "Review": 420.0},
+                "24h": {"Done": 3690.0, "In Progress": 120.0, "Review": 13950.0},
                 "7d": {
+                    "Done": 3690.0,
                     "In Progress": 120.0,
                     "Ready": 1440.0,
-                    "Review": 420.0,
+                    "Review": 13950.0,
                 },
                 "30d": {
                     "Build": 1440.0,
+                    "Done": 3690.0,
                     "In Progress": 120.0,
                     "Ready": 1440.0,
-                    "Review": 420.0,
+                    "Review": 13950.0,
                 },
             },
         )
@@ -102,8 +104,17 @@ class ParseEventsTest(unittest.TestCase):
              "_timestamp": "2026-09-21T12:00:00Z"},
         ]
         result = events.parse_query_result({"hits": hits}, now=NOW)
-        self.assertEqual(result["statusMedianMinutes"]["30d"], {"Blocked": 2880.0})
-        self.assertEqual(result["statusMedianMinutes"]["7d"], {})
+        self.assertEqual(result["statusMedianMinutes"]["30d"]["Blocked"], 2880.0)
+        self.assertNotIn("Blocked", result["statusMedianMinutes"]["7d"])
+
+    def test_single_transition_counts_open_interval_in_every_window(self):
+        hits = [
+            {"event": "ticket.status", "ticket_key": "JOO-1", "to_status": "Review",
+             "_timestamp": "2026-10-20T11:00:00Z"},
+        ]
+        result = events.parse_query_result({"hits": hits}, now=NOW)
+        for period in ("24h", "7d", "30d"):
+            self.assertEqual(result["statusMedianMinutes"][period], {"Review": 60.0})
 
     def test_collect_keeps_interval_over_120_days_with_latest_predecessor_query(self):
         old = {"event": "ticket.status", "ticket_key": "JOO-1", "to_status": "Blocked",
@@ -126,7 +137,9 @@ class ParseEventsTest(unittest.TestCase):
         self.assertNotIn("'step.run'", history["sql"])
         self.assertIn("row_number() OVER", history["sql"])
         self.assertIn("rn = 1", history["sql"])
-        self.assertEqual(len(result["statusMedianMinutes"]["30d"]), 1)
+        self.assertEqual(
+            set(result["statusMedianMinutes"]["30d"]), {"Blocked", "Done"}
+        )
         self.assertGreater(result["statusMedianMinutes"]["30d"]["Blocked"], 200 * 1440)
 
     def test_collect_rejects_plain_http_to_remote_host(self):
