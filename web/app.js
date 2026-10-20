@@ -21,13 +21,19 @@
     $('#live').className = 'live' + (b.level ? ' ' + b.level : ''); $('#liveText').textContent = b.text;
   }
   setInterval(liveBadge, 1000);
+  const SRC = { jira: 'Jira', github: 'GitHub', machine: 'Worker machine' };
+  function sources() {
+    const ok = (DOCS && DOCS.meta && DOCS.meta.ok) || {}, bad = Object.keys(ok).filter(k => ok[k] === false);
+    const el = $('#srcwarn'); if (!el) return;
+    el.hidden = !bad.length; el.textContent = bad.length ? 'Last collection failed for ' + bad.map(k => SRC[k] || k).join(', ') + '; its figures may be stale.' : '';
+  }
 
   /* ---------- KPIs ---------- */
   function kpis() {
     const f = DOCS.flow, m = DOCS.machine; const inf = f.inflight; const by = s => inf.filter(t => t.status === s).length;
     const working = (m.workersBusy || 0); const waiting = by('Human review') + by('Ready to merge') + by('Blocked');
     const items = [
-      ['Working now', working + ' / 2', working ? 'AI steps holding a worker' : 'both workers idle', 'var(--run)'],
+      ['Working now', working + (m.workersTotal ? ' / ' + m.workersTotal : ''), working ? 'AI steps holding a worker' : 'workers idle', 'var(--run)'],
       ['In the flow', inf.filter(t => t.status !== 'Blocked').length, 'To Do through Ready to merge', 'var(--todo)'],
       ['Waiting for owner', waiting, by('Human review') + by('Ready to merge') + ' approval · ' + by('Blocked') + ' blocked', 'var(--human)'],
       ['Done, 24 hours', f.doneLast24h, f.doneByAiLast24h + ' worked by an AI, the rest closed by hand', 'var(--done)'],
@@ -41,7 +47,7 @@
   /* ---------- timeline ---------- */
   function timeline() {
     const tl = DOCS.timeline, runs = tl.runs, merges = tl.merges; const W = 1000, L0 = 90, T = 8, laneH = 40, span = 6 * 3600; const now = tl.now, t0 = now - span; const x = t => L0 + (t - t0) / span * (W - L0 - 8);
-    // pack runs into the fewest lanes (two workers means two lanes at most)
+    // pack runs into the fewest lanes (one lane per busy worker)
     const laneEnd = []; const placed = runs.map(r => { let i = laneEnd.findIndex(e => e <= r.start); if (i < 0) { i = laneEnd.length; laneEnd.push(0); } laneEnd[i] = r.end; return { r, lane: i }; });
     const lanes = Math.max(2, laneEnd.length); const H = T + (lanes + 1) * (laneH + 4) + 26; $('#tl').setAttribute('viewBox', '0 0 1000 ' + H);
     let h = '';
@@ -68,7 +74,7 @@
   /* ---------- projects ---------- */
   function etaFor(p) {
     const f = DOCS.flow; if (!p.onFlow || f.cycle.p50 == null) return null; const n = f.inflight.filter(t => t.project === p.key && t.status !== 'Blocked' && t.status !== 'Human review' && t.status !== 'Ready to merge').length; if (!n) return { none: true };
-    const k = n / 2; return { lo: k * f.cycle.p25, mid: k * f.cycle.p50, hi: k * f.cycle.p75, n };
+    const w = DOCS.machine.workersTotal; if (!w) return null; const k = n / w; return { lo: k * f.cycle.p25, mid: k * f.cycle.p50, hi: k * f.cycle.p75, n };
   }
   function projectRows() {
     const rows = P().filter(p => p.total > 0).map(p => { const c = p.counts, declined = c.Declined || 0, tot = p.total - declined, done = c.Done || 0; return { p, tot, done, prog: done / Math.max(1, tot), open: p.total - declined - done }; });
@@ -142,7 +148,7 @@
 
   $('#theme').onclick = () => { const cur = document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'); document.documentElement.dataset.theme = cur === 'dark' ? 'light' : 'dark'; };
   function render() {
-    [liveBadge, kpis, timeline, funnel, projectRows, aiTable, machine, feed].forEach(f => { try { f(); } catch (e) { console.error(f.name, e); } });
+    [liveBadge, sources, kpis, timeline, funnel, projectRows, aiTable, machine, feed].forEach(f => { try { f(); } catch (e) { console.error(f.name, e); } });
     if (sel) { try { const keep = $('#drawer').scrollTop; renderDrawer(); $('#drawer').scrollTop = keep; } catch (e) { console.error('drawer', e); } }
   }
   liveBadge();

@@ -13,7 +13,7 @@ from controlroom.server import make_server
 
 WEB = Path(__file__).resolve().parent.parent / "web"
 PLACEHOLDER_IDS = {
-    "live", "liveText", "theme", "kpis", "tl", "tlnote", "legend", "fun", "funnote", "ptable",
+    "live", "liveText", "srcwarn", "theme", "kpis", "tl", "tlnote", "legend", "fun", "funnote", "ptable",
     "aitable", "ainote", "machine", "gauges", "spark", "mkv", "chips", "feed", "scrim", "drawer",
 }
 
@@ -109,6 +109,14 @@ class WebTests(unittest.TestCase):
         css = (WEB / "style.css").read_text(encoding="utf-8")
         self.assertIn(".live.stale i { background: var(--wait)", css)
         self.assertIn(".live.old i { background: var(--blocked)", css)
+
+    def test_source_failures_and_worker_capacity_come_from_the_snapshot(self):
+        app = (WEB / "app.js").read_text(encoding="utf-8")
+        self.assertIn("DOCS.meta.ok", app)
+        self.assertIn("m.workersTotal", app)
+        self.assertIn("DOCS.machine.workersTotal", app)
+        self.assertNotIn("/ 2'", app)
+        self.assertNotIn("n / 2", app)
 
 
 if __name__ == "__main__":

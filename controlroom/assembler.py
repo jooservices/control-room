@@ -323,6 +323,14 @@ def _apply_ai(snapshot, raw) -> None:
     snapshot["ai"] = {"agents": agents, "versions": {}, "usable": {}}
 
 
+def _worker_total(services) -> int | None:
+    """Worker capacity is the number of aiflow worker units; None when unknown."""
+    if not isinstance(services, dict):
+        return None
+    total = sum(1 for unit in services if "worker" in unit)
+    return total or None
+
+
 def _apply_machine(snapshot, good, machine_history) -> None:
     machine = snapshot["machine"]
     if "machine" in good:
@@ -343,6 +351,7 @@ def _apply_machine(snapshot, good, machine_history) -> None:
                 "code": raw.get("code"),
                 "leases": leases,
                 "workersBusy": len(leases),
+                "workersTotal": _worker_total(raw.get("services")),
             }
         )
     if machine_history is not None:

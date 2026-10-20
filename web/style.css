@@ -82,3 +82,6 @@ td.num { font-variant-numeric: tabular-nums; font-family: var(--f-mono); font-si
 .scrim { position: fixed; inset: 0; background: rgba(0,0,0,.35); opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 19; } .scrim.open { opacity: 1; pointer-events: auto; }
 .src { font: 400 11px var(--f-mono); color: var(--ink-2); margin-top: 10px; }
 @media (prefers-reduced-motion: reduce) { .drawer, .scrim, .fun i { transition: none; } .live i { animation: none; } }
+
+.srcwarn { font: 500 12px var(--f-mono); color: var(--blocked); }
+.srcwarn[hidden] { display: none; }
