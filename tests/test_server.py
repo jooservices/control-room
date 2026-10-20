@@ -67,10 +67,11 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(response.getheader("Content-Length"), "13")
 
     def test_other_methods_return_405_and_write_nothing(self):
-        for method in ("POST", "PUT", "DELETE", "PATCH"):
+        for method in ("POST", "PUT", "DELETE", "PATCH", "OPTIONS", "TRACE", "CONNECT", "PROPFIND"):
             status, response, _ = self.request(method, "/api/snapshot")
             self.assertEqual(status, 405, method)
             self.assertEqual(response.getheader("Allow"), "GET, HEAD")
+            self.assertEqual(response.getheader("Cache-Control"), "no-store")
         self.assertEqual(self.snapshot.read_text(encoding="utf-8"), '{"version":1}')
 
     def test_healthz_fresh_then_stale(self):

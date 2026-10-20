@@ -74,9 +74,13 @@ class Handler(BaseHTTPRequestHandler):
 
     def _reject_method(self) -> None:
         self._send(HTTPStatus.METHOD_NOT_ALLOWED, b"method not allowed\n",
-                   "text/plain; charset=utf-8", True, {"Allow": "GET, HEAD"})
+                   "text/plain; charset=utf-8", True, {"Allow": "GET, HEAD"}, api=True)
 
-    do_POST = do_PUT = do_DELETE = do_PATCH = do_OPTIONS = _reject_method
+    def __getattr__(self, name: str):
+        # Any other verb (POST, TRACE, CONNECT, custom ones) is answered with 405.
+        if name.startswith("do_"):
+            return self._reject_method
+        raise AttributeError(name)
 
     def _dispatch(self, send_body: bool) -> None:
         path = urlsplit(self.path).path
