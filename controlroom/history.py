@@ -2,6 +2,7 @@
 
 import contextlib
 import datetime as dt
+import math
 import re
 import sqlite3
 from pathlib import Path
@@ -132,14 +133,17 @@ class HistoryStore:
         rows = []
         for run in usage:
             try:
+                minutes = float(run.get("minutes") or 0)
+                if not math.isfinite(minutes) or minutes < 0:
+                    continue
                 rows.append(
                     (
                         str(run["name"]), int(run["end"]), str(run["ai"]),
                         str(run.get("role") or "unknown"),
-                        float(run.get("minutes") or 0), int(run.get("why") == "ok"),
+                        minutes, int(run.get("why") == "ok"),
                     )
                 )
-            except (KeyError, TypeError, ValueError):
+            except (KeyError, TypeError, ValueError, OverflowError):
                 continue
         with self._connect() as connection:
             before = connection.total_changes

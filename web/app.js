@@ -94,7 +94,7 @@
   }
   function usageTable() {
     const rows = (DOCS.ai && DOCS.ai.usage) || [], cell = (r, w, k) => r[k + w] || 0;
-    $('#usagetable tbody').innerHTML = rows.length ? rows.map(r => '<tr><td><b>' + esc(r.ai) + '</b> <span class="mono" data-css="color:var(--ink-2)">' + esc(r.role) + '</span></td>' + ['24h', '7d', '30d'].map(w => '<td class="num">' + cell(r, w, 'runs') + '</td><td class="num">' + Math.round(cell(r, w, 'minutes')) + '</td><td class="num">' + (cell(r, w, 'bad') ? '<b data-css="color:var(--blocked)">' + cell(r, w, 'bad') + '</b>' : 0) + '</td>').join('') + '</tr>').join('') : '<tr><td colspan="10" class="empty">No AI run recorded yet.</td></tr>';
+    $('#usagetable tbody').innerHTML = rows.length ? rows.map(r => '<tr><td><b>' + esc(r.ai) + '</b> <span class="mono" data-css="color:var(--ink-2)">' + esc(r.role) + '</span></td>' + ['24h', '7d', '30d'].map(w => '<td class="num">' + cell(r, w, 'runs') + '</td><td class="num">' + cell(r, w, 'minutes').toFixed(1) + '</td><td class="num">' + (cell(r, w, 'bad') ? '<b data-css="color:var(--blocked)">' + cell(r, w, 'bad') + '</b>' : 0) + '</td>').join('') + '</tr>').join('') : '<tr><td colspan="10" class="empty">No AI run recorded yet.</td></tr>';
   }
   function gauge(l, v, mx, u, d) { const p = Math.min(100, v / mx * 100); return '<div class="gauge"><div class="h"><span>' + l + '</span><b>' + v.toFixed(d == null ? 1 : d) + ' ' + u + '</b></div><div class="meter"><i data-css="width:' + p + '%;background:' + (p > 80 ? 'var(--blocked)' : p > 55 ? 'var(--wait)' : 'var(--accent)') + '"></i></div></div>'; }
   function machine() {
