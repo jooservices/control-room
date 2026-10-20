@@ -217,6 +217,16 @@ class WebTests(unittest.TestCase):
                 ratio = contrast(palette[fg], palette["panel"])
                 self.assertGreaterEqual(ratio, 4.5, "{} stale {} on panel: {:.2f}".format(theme, fg, ratio))
 
+    def test_timeline_markup_escapes_machine_usage_fields(self):
+        app = (WEB / "app.js").read_text(encoding="utf-8")
+        start = app.index("function timeline()")
+        block = app[start:app.index("/* ---------- tickets now", start)]
+        for field in ("r.key", "r.ai", "r.role", "r.minutes", "m.url"):
+            raw = re.findall(r"\+ " + re.escape(field) + r"(?![\w.])", block)
+            self.assertEqual(raw, [], "{} is concatenated into markup unescaped".format(field))
+        for call in ("esc(r.key)", "esc(r.ai)", "esc(r.role)", "esc(r.minutes)", "esc(m.url)"):
+            self.assertIn(call, block)
+
     def test_timeline_labels_are_not_dimmed_and_pass_on_every_role_bar(self):
         app = (WEB / "app.js").read_text(encoding="utf-8")
         for tag in re.findall(r"<text class=\"seg-t\"[^>]*>", app):
