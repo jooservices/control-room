@@ -6,6 +6,37 @@ const CRLib = (function () {
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const fmtMin = m => m == null ? '–' : m < 1 ? '<1 min' : m < 60 ? Math.round(m) + ' min' : (m / 60).toFixed(1) + ' h';
   const ago = seconds => { const s = Math.max(0, seconds); return s < 90 ? Math.round(s) + ' s' : s < 5400 ? Math.round(s / 60) + ' min' : s < 172800 ? (s / 3600).toFixed(1) + ' h' : Math.round(s / 86400) + ' d'; };
+  const EVENT_KIND = {
+    status: ['Status', 'var(--ink-2)'],
+    run: ['AI run', 'var(--run)'],
+    badrun: ['AI run', 'var(--blocked)'],
+    merge: ['Merge', 'var(--done)']
+  };
+
+  /* Render one safe event row. Drawer destinations are data, so the app can
+     open them without embedding inline handlers in the generated markup. */
+  function renderEvent(event, timeLabel) {
+    const kinds = EVENT_KIND[event.kind] || EVENT_KIND.status;
+    const allowedTypes = ['ticket', 'project', 'ai'];
+    const suppliedLink = event.link || {};
+    const fallbackType = event.kind === 'run' || event.kind === 'badrun' ? 'ai' : event.key ? 'ticket' : 'project';
+    const type = allowedTypes.includes(suppliedLink.type) ? suppliedLink.type : fallbackType;
+    const fallbackKey = type === 'project' ? event.project : type === 'ai' ? String(event.text || '').split(' ')[0].toLowerCase() : event.key;
+    const targetKey = suppliedLink.key || fallbackKey || 'unknown';
+    const targetLabel = type === 'ai' ? 'AI' : type === 'project' ? 'project' : 'ticket';
+    const text = String(event.text || 'Event details unavailable');
+    const main = '<button type="button" class="event-open" data-target-type="' + esc(type) + '" data-target-key="' + esc(targetKey) + '" aria-label="Open ' + esc(targetLabel) + ' ' + esc(targetKey) + ': ' + esc(text) + '">' + esc(text) + '</button>';
+    const ticket = event.key && type !== 'ticket'
+      ? '<button type="button" class="event-related" data-target-type="ticket" data-target-key="' + esc(event.key) + '" aria-label="Open ticket ' + esc(event.key) + '">' + esc(event.key) + '</button>'
+      : '';
+    const project = event.project && type !== 'project'
+      ? '<button type="button" class="event-related" data-target-type="project" data-target-key="' + esc(event.project) + '" aria-label="Open project ' + esc(event.project) + '">' + esc(event.project) + '</button>'
+      : '';
+    const external = typeof event.url === 'string' && /^https:\/\/[^\s"<>]+$/i.test(event.url)
+      ? '<a class="event-source" href="' + esc(event.url) + '" target="_blank" rel="noopener noreferrer">Open pull request</a>'
+      : '';
+    return '<article class="ev" data-css="--c:' + kinds[1] + '"><div class="event-meta"><time datetime="' + esc(event.at || '') + '">' + esc(timeLabel || '') + '</time><span class="k">' + kinds[0] + '</span></div><div class="event-actions">' + main + ticket + project + external + '</div></article>';
+  }
 
   /* The 'updated N seconds ago' badge, from meta.asOf. level is '' (live), 'stale' (amber) or 'old' (red). */
   function badge(asOfIso, nowMs) {
@@ -60,5 +91,5 @@ const CRLib = (function () {
     };
   }
 
-  return { SNAPSHOT_URL, STREAM_URL, POLL_MS, STALE_AFTER_S, OLD_AFTER_S, esc, fmtMin, ago, badge, parseCss, applyCss, isSnapshot, createFeed };
+  return { SNAPSHOT_URL, STREAM_URL, POLL_MS, STALE_AFTER_S, OLD_AFTER_S, esc, fmtMin, ago, badge, parseCss, applyCss, isSnapshot, createFeed, renderEvent };
 })();

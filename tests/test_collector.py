@@ -121,6 +121,42 @@ class AssembleTest(unittest.TestCase):
         self.assertEqual(
             sorted(e["kind"] for e in snapshot["events"]["list"]), ["merge", "run", "status"]
         )
+        events = snapshot["events"]["list"]
+        self.assertTrue(all(event.get("link") for event in events))
+        self.assertEqual([event["kind"] for event in events], ["run", "status", "merge"])
+        status = events[1]
+        self.assertEqual(status["project"], "JOOCR")
+        self.assertEqual(status["link"], {"type": "ticket", "key": "JOOCR-5"})
+        run = events[0]
+        self.assertEqual(run["project"], "JOOCR")
+        self.assertEqual(run["link"], {"type": "ai", "key": "claude"})
+        merge = events[2]
+        self.assertEqual(merge["link"], {"type": "ticket", "key": "JOOCR-5"})
+        self.assertEqual(merge["url"], "u")
+
+    def test_events_are_newest_first_and_capped_at_200(self):
+        results = all_results()
+        projects, _events = results["jira"]
+        results["jira"] = (projects, [
+            {
+                "at": (NOW - dt.timedelta(seconds=offset)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "kind": "status",
+                "key": "JOOCR-{}".format(offset + 1),
+                "text": "To Do → In Progress",
+            }
+            for offset in range(205)
+        ])
+
+        events = assemble(results, None, now=NOW)["events"]["list"]
+
+        self.assertEqual(len(events), 200)
+        self.assertEqual(events[0]["key"], "JOOCR-1")
+        self.assertEqual(events[-1]["key"], "JOOCR-200")
+        self.assertEqual(
+            [event["at"] for event in events],
+            sorted((event["at"] for event in events), reverse=True),
+        )
+        self.assertTrue(all(event["project"] == "JOOCR" for event in events))
 
     def test_failed_source_keeps_previous_document_and_others_update(self):
         first = assemble(all_results(), None, now=NOW)
@@ -134,6 +170,8 @@ class AssembleTest(unittest.TestCase):
         self.assertEqual(second["projects"]["list"], first["projects"]["list"])
         self.assertEqual(second["flow"]["statusCounts"], first["flow"]["statusCounts"])
         self.assertIn("status", [e["kind"] for e in second["events"]["list"]])
+        old_status = next(e for e in second["events"]["list"] if e["kind"] == "status")
+        self.assertEqual(old_status["link"], {"type": "ticket", "key": "JOOCR-5"})
         self.assertEqual(second["machine"]["load"], [9.0, 0, 0])
         self.assertEqual(
             second["meta"]["ok"], {"jira": False, "github": True, "machine": True}

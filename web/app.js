@@ -9,8 +9,7 @@
   };
   const STATUS_COLOR = { 'Backlog': 'var(--backlog)', 'To Do': 'var(--todo)', 'In Progress': 'var(--run)', 'In Review': 'var(--run)', 'Review passed': 'var(--wait)', 'In QA': 'var(--wait)', 'Human review': 'var(--human)', 'Ready to merge': 'var(--human)', 'Blocked': 'var(--blocked)', 'Done': 'var(--done)', 'Declined': 'var(--backlog)' };
   const ROLE_COLOR = { developer: 'var(--run)', reviewer: 'var(--todo)', qa: 'var(--wait)' };
-  const KIND = { status: ['status', 'var(--ink-2)'], run: ['ai run', 'var(--run)'], badrun: ['ai run', 'var(--blocked)'], merge: ['merge', 'var(--done)'] };
-  let filter = 'all', sortKey = 'open', sortDir = -1, sel = null;
+  let filter = 'all', projectFilter = 'all', sortKey = 'open', sortDir = -1, sel = null, drawerOpener = null;
   const clock = d => new Date(d).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const P = () => (DOCS.projects && DOCS.projects.list) || [];
   const pmap = () => { const m = {}; P().forEach(p => m[p.key] = p); return m; };
@@ -103,18 +102,68 @@
     $('#mkv').innerHTML = '<dt>Workers</dt><dd>' + Object.entries(svc).map(([k, v]) => k.replace('aiflow-', '') + ' ' + v).join(' · ') + '</dd><dt>Heartbeats</dt><dd>' + (Object.entries(hb).map(([k, v]) => k.replace('hb:', '') + ' ' + v + ' s ago').join(' · ') || '–') + '</dd><dt>State store</dt><dd>' + (rd.error ? 'error' : rd.ops + ' cmd/s · ' + rd.mem) + '</dd><dt>Shared containers</dt><dd>' + m.containers + ' running</dd><dt>Flow code</dt><dd>' + esc(m.code) + '</dd><dt>Uptime</dt><dd>' + m.uptimeH + ' h</dd><dt>Latest CI runs</dt><dd>' + (m.runs || []).slice(0, 4).map(r => '<a href="' + r.url + '" target="_blank" rel="noopener noreferrer">' + esc(r.name) + ' ' + r.status + ' ' + r.mins + 'm</a>').join(' · ') + '</dd>';
   }
   function feed() {
-    const ev = DOCS.events.list.filter(e => filter === 'all' || (filter === 'run' ? (e.kind === 'run' || e.kind === 'badrun') : e.kind === filter));
-    $('#feed').innerHTML = ev.length ? ev.slice(0, 60).map(e => { const k = KIND[e.kind] || KIND.status; return '<div class="ev" data-css="--c:' + k[1] + '"><span class="mono" data-css="color:var(--ink-2)">' + clock(e.at) + '</span><span class="k">' + k[0] + '</span><span>' + (e.key ? '<button data-k="' + e.key + '">' + e.key + '</button> ' : '') + (e.url ? '<a href="' + e.url + '" target="_blank" rel="noopener noreferrer">' + esc(e.text) + '</a>' : esc(e.text)) + '</span></div>'; }).join('') : '<div class="empty">Nothing in the last 24 hours for this filter.</div>';
-    $('#feed').querySelectorAll('button[data-k]').forEach(b => b.onclick = () => openTicket(b.dataset.k));
+    const ev = DOCS.events.list.filter(e =>
+      (filter === 'all' || (filter === 'run' ? (e.kind === 'run' || e.kind === 'badrun') : e.kind === filter)) &&
+      (projectFilter === 'all' || e.project === projectFilter)
+    );
+    $('#feed').innerHTML = ev.length
+      ? ev.map(e => CRLib.renderEvent(e, clock(e.at))).join('')
+      : '<div class="empty">Nothing in the last 24 hours for these filters.</div>';
+    $('#feed').querySelectorAll('[data-target-type]').forEach(b => {
+      b.onclick = () => openTarget(b.dataset.targetType, b.dataset.targetKey);
+    });
   }
-  $('#chips').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; filter = b.dataset.f; [...$('#chips').children].forEach(x => x.setAttribute('aria-pressed', x === b)); feed(); });
+  function eventFilters() {
+    const projects = new Map(P().map(p => [p.key, p.name || p.key]));
+    (DOCS.events.list || []).forEach(e => { if (e.project && !projects.has(e.project)) projects.set(e.project, e.project); });
+    const select = $('#event-project');
+    const options = [...projects.entries()].sort(([a], [b]) => a.localeCompare(b));
+    if (projectFilter !== 'all' && !projects.has(projectFilter)) projectFilter = 'all';
+    select.innerHTML = '<option value="all">All projects</option>' + options.map(([key, name]) => '<option value="' + esc(key) + '">' + esc(name) + ' · ' + esc(key) + '</option>').join('');
+    select.value = projectFilter;
+    [...$('#chips').children].forEach(b => b.setAttribute('aria-pressed', b.dataset.f === filter ? 'true' : 'false'));
+  }
+  $('#chips').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    filter = b.dataset.f; eventFilters(); feed();
+  });
+  $('#event-project').addEventListener('change', e => { projectFilter = e.target.value; feed(); });
 
   /* ---------- drawer ---------- */
   const links = a => '<div class="links">' + a.map(l => '<a href="' + l[1] + '" target="_blank" rel="noopener noreferrer">' + l[0] + '</a>').join('') + '</div>';
-  function openDrawer() { $('#drawer').classList.add('open'); $('#scrim').classList.add('open'); }
-  function closeDrawer() { sel = null; $('#drawer').classList.remove('open'); $('#scrim').classList.remove('open'); }
-  $('#scrim').onclick = closeDrawer; document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
+  function openDrawer() {
+    const drawer = $('#drawer');
+    if (!drawer.classList.contains('open')) drawerOpener = document.activeElement;
+    drawer.removeAttribute('inert'); drawer.classList.add('open'); drawer.setAttribute('aria-hidden', 'false'); $('#scrim').classList.add('open');
+    drawer.querySelector('.x').focus();
+  }
+  function closeDrawer() {
+    const drawer = $('#drawer');
+    sel = null; drawer.classList.remove('open'); drawer.setAttribute('aria-hidden', 'true'); drawer.setAttribute('inert', ''); $('#scrim').classList.remove('open');
+    const target = drawerOpener && drawerOpener.isConnected ? drawerOpener : $('#event-project');
+    if (target) target.focus();
+    drawerOpener = null;
+  }
+  $('#scrim').onclick = closeDrawer;
+  document.addEventListener('keydown', e => {
+    const drawer = $('#drawer');
+    if (!sel || !drawer.classList.contains('open')) return;
+    if (e.key === 'Escape') { closeDrawer(); return; }
+    if (e.key !== 'Tab') return;
+    const focusable = [...drawer.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])')];
+    const first = focusable[0], last = focusable[focusable.length - 1];
+    if (!first) { e.preventDefault(); drawer.focus(); }
+    else if (!drawer.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+    else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
   const openTicket = k => { sel = { t: 'ticket', k }; renderDrawer(); openDrawer(); }, openProject = k => { sel = { t: 'project', k }; renderDrawer(); openDrawer(); }, openAI = k => { sel = { t: 'ai', k }; renderDrawer(); openDrawer(); };
+  function openTarget(type, key) {
+    if (!key) return;
+    if (type === 'project') openProject(key);
+    else if (type === 'ai') openAI(key);
+    else openTicket(key);
+  }
   function ticketInfo(k) {
     const pm = pmap(), pk = k.split('-')[0], p = pm[pk]; let t = DOCS.flow.inflight.find(x => x.key === k);
     const act = p && p.active.find(x => x.key === k); const runs = DOCS.timeline.runs.filter(r => r.key === k); const evs = DOCS.events.list.filter(e => e.key === k);
@@ -130,7 +179,12 @@
       if (runs.length) h += '<h5>AI runs (last 6 hours)</h5><ul class="steps">' + runs.map(r => '<li data-css="--c:' + (ROLE_COLOR[r.role] || 'var(--run)') + '"><span class="mono">' + clock(r.end * 1000) + '</span><span><b>' + r.ai + '</b> · ' + r.role + ' · ' + r.minutes + ' min' + (r.ok ? '' : ' · ended badly') + '</span></li>').join('') + '</ul>';
       if (evs.length) h += '<h5>Events (24 hours)</h5><ul class="steps">' + evs.map(e => '<li data-css="--c:' + (STATUS_COLOR[e.text.split(' → ')[1]] || 'var(--ink-2)') + '"><span class="mono">' + clock(e.at) + '</span><span>' + esc(e.text) + '</span></li>').join('') + '</ul>';
     } else if (sel.t === 'project') {
-      const p = pmap()[sel.k]; const c = p.counts, declined = c.Declined || 0, tot = p.total - declined, done = c.Done || 0; const e = etaFor(p);
+      const p = pmap()[sel.k];
+      if (!p) {
+        h += '<h3 id="drawer-title">' + esc(sel.k) + '</h3><div class="sub">Project details are unavailable in the current snapshot.</div>';
+        d.innerHTML = h; d.querySelector('.x').onclick = closeDrawer; return;
+      }
+      const c = p.counts, declined = c.Declined || 0, tot = p.total - declined, done = c.Done || 0; const e = etaFor(p);
       h += '<h3>' + esc(p.name) + '</h3><div class="sub">' + p.key + ' · repository ' + p.repo + (p.onFlow ? ' · on the flow' : ' · not on the flow') + '</div><div class="meter"><i data-css="width:' + done / Math.max(1, tot) * 100 + '%"></i></div><b>' + Math.round(done / Math.max(1, tot) * 100) + '%</b> of ' + tot + ' tickets done';
       h += '<dl class="kv"><dt>Jira now</dt><dd>' + esc(Object.entries(c).map(([k, v]) => k + ' ' + v).join(' · ')) + '</dd><dt>Done, 24 h</dt><dd>' + p.doneLast24h + '</dd><dt>Estimated finish</dt><dd>' + (e ? (e.none ? 'nothing queued in the flow' : fmtMin(e.lo) + ' to ' + fmtMin(e.hi) + ' for ' + e.n + ' tickets') : p.onFlow ? 'not enough finished tickets yet' : 'not on the flow') + '</dd><dt>Last Jira update</dt><dd>' + esc((p.lastUpdate || '').replace('T', ' ')) + '</dd></dl>';
       h += links([['Board', L.board(p)], ['Open issues', L.issues(p)], ['Repository', L.repo(p)], ['Pull requests', L.pulls(p)], ['CI runs', L.actions(p)]]);
@@ -138,17 +192,24 @@
       if (p.mergedPRs.length) h += '<h5>Recently merged pull requests</h5><div class="lst">' + p.mergedPRs.map(m => '<a data-css="display:block;padding:3px 6px;font-size:12.5px" href="' + m.url + '" target="_blank" rel="noopener noreferrer">#' + m.number + ' ' + esc(m.title) + '</a>').join('') + '</div>';
       if (p.active.length) h += '<h5>Open tickets (most recent)</h5><div class="lst">' + p.active.slice(0, 14).map(t2 => '<button data-k="' + t2.key + '"><span class="mono">' + t2.key + '</span><span>' + esc(t2.summary.slice(0, 44)) + '</span><span class="pill" data-css="--c:' + (STATUS_COLOR[t2.status] || 'var(--line)') + '">' + t2.status + '</span></button>').join('') + '</div>';
     } else {
-      const a = DOCS.ai.agents.find(x => x.id === sel.k);
+      const a = DOCS.ai.agents.find(x => x.id === sel.k || x.name === sel.k);
+      if (!a) {
+        h += '<h3 id="drawer-title">' + esc(sel.k) + '</h3><div class="sub">This AI is not in the current agent list.</div>';
+        d.innerHTML = h; d.querySelector('.x').onclick = closeDrawer; return;
+      }
       h += '<h3>' + a.name + '</h3><div class="sub">' + esc(a.model) + (a.effort !== 'default' ? ' · reasoning ' + a.effort : '') + '</div><span class="pill" data-css="--c:' + (a.usable ? 'var(--done)' : 'var(--blocked)') + '">' + (a.usable ? 'ready' : 'out of the pool') + '</span>';
       h += '<dl class="kv"><dt>Used for</dt><dd>' + esc(a.roles) + '</dd><dt>Sign-in probe</dt><dd>' + esc(a.probe) + '</dd><dt>Runs, 24 h</dt><dd>' + a.runs24h + ' (' + a.bad24h + ' ended badly)</dd><dt>Minutes, 24 h</dt><dd>' + a.minutes24h + '</dd><dt>Runs, since logging began</dt><dd>' + (a.runsAll == null ? 'not recorded' : a.runsAll + ' · ' + a.minutesAll + ' min · ' + a.badAll + ' ended badly') + '</dd></dl>';
       const v = DOCS.ai.versions; const mine = Object.values(v)[0]; if (mine && mine[a.id]) h += '<p class="mono" data-css="color:var(--ink-2)">CLI version ' + esc(mine[a.id]) + '</p>';
     }
-    d.innerHTML = h; d.querySelector('.x').onclick = closeDrawer; d.querySelectorAll('button[data-k]').forEach(b => b.onclick = () => openTicket(b.dataset.k));
+    d.innerHTML = h;
+    const title = d.querySelector('h3'); if (title) title.id = 'drawer-title';
+    d.querySelector('.x').onclick = closeDrawer;
+    d.querySelectorAll('button[data-k]').forEach(b => b.onclick = () => openTicket(b.dataset.k));
   }
 
   $('#theme').onclick = () => { const cur = document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'); document.documentElement.dataset.theme = cur === 'dark' ? 'light' : 'dark'; };
   function render() {
-    [liveBadge, sources, kpis, timeline, funnel, projectRows, aiTable, machine, feed].forEach(f => { try { f(); } catch (e) { console.error(f.name, e); } });
+    [liveBadge, sources, kpis, timeline, funnel, projectRows, aiTable, machine, eventFilters, feed].forEach(f => { try { f(); } catch (e) { console.error(f.name, e); } });
     if (sel) { try { const keep = $('#drawer').scrollTop; renderDrawer(); $('#drawer').scrollTop = keep; } catch (e) { console.error('drawer', e); } }
   }
   liveBadge();

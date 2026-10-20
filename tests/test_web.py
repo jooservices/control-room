@@ -14,7 +14,7 @@ from controlroom.server import make_server
 WEB = Path(__file__).resolve().parent.parent / "web"
 PLACEHOLDER_IDS = {
     "live", "liveText", "srcwarn", "theme", "kpis", "tl", "tlnote", "legend", "fun", "funnote", "ptable",
-    "aitable", "ainote", "machine", "gauges", "spark", "mkv", "chips", "feed", "scrim", "drawer",
+    "aitable", "ainote", "machine", "gauges", "spark", "mkv", "chips", "event-project", "feed", "scrim", "drawer",
 }
 
 
@@ -122,6 +122,28 @@ class WebTests(unittest.TestCase):
         app = (WEB / "app.js").read_text(encoding="utf-8")
         self.assertNotRegex(app, r"""onclick=["']""")
         self.assertIn("a.runsAll == null ? 'not recorded'", app)
+
+    def test_events_have_project_and_kind_filters_and_open_entity_drawers(self):
+        html = (WEB / "index.html").read_text(encoding="utf-8")
+        app = (WEB / "app.js").read_text(encoding="utf-8")
+        self.assertIn('for="event-project"', html)
+        self.assertIn('aria-label="Filter events by kind"', html)
+        self.assertIn('role="dialog" aria-modal="true"', html)
+        self.assertIn("projectFilter === 'all' || e.project === projectFilter", app)
+        self.assertIn("openTarget(b.dataset.targetType, b.dataset.targetKey)", app)
+        self.assertIn("e.key !== 'Tab'", app)
+        self.assertIn("drawerOpener", app)
+
+    def test_event_renderer_escapes_content_and_exposes_keyboard_actions(self):
+        lib = (WEB / "lib.js").read_text(encoding="utf-8")
+        css = (WEB / "style.css").read_text(encoding="utf-8")
+        self.assertIn("function renderEvent(event, timeLabel)", lib)
+        self.assertIn('class="event-open" data-target-type=', lib)
+        self.assertIn('aria-label="Open ', lib)
+        self.assertIn("esc(text)", lib)
+        self.assertIn("CRLib.renderEvent(e, clock(e.at))", (WEB / "app.js").read_text(encoding="utf-8"))
+        self.assertIn("@media (max-width: 480px)", css)
+        self.assertIn(".event-open:focus-visible", css)
 
 
 if __name__ == "__main__":
