@@ -1,0 +1,27 @@
+[
+  {
+    "name": "CI",
+    "url": "https://github.com/jooservices/control-room/actions/runs/1002",
+    "status": "completed",
+    "conclusion": "success",
+    "createdAt": "2026-10-20T10:00:00Z",
+    "updatedAt": "2026-10-20T10:06:30Z"
+  },
+  {
+    "name": null,
+    "displayTitle": "Build for pull request #1003",
+    "url": "https://github.com/jooservices/control-room/actions/runs/1003",
+    "status": "completed",
+    "conclusion": "failure",
+    "createdAt": "2026-10-20T11:00:00Z",
+    "updatedAt": "2026-10-20T11:04:00Z"
+  },
+  {
+    "name": "CI",
+    "url": "https://github.com/jooservices/control-room/actions/runs/1001",
+    "status": "in_progress",
+    "conclusion": null,
+    "createdAt": "2026-10-20T09:00:00Z",
+    "updatedAt": "2026-10-20T09:02:00Z"
+  }
+]

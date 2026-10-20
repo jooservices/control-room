@@ -1,0 +1,14 @@
+[
+  {
+    "number": 42,
+    "title": "Add GitHub source",
+    "url": "https://github.com/jooservices/control-room/pull/42",
+    "isDraft": false
+  },
+  {
+    "number": 41,
+    "title": "WIP: collector source",
+    "url": "https://github.com/jooservices/control-room/pull/41",
+    "isDraft": true
+  }
+]

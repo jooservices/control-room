@@ -1,0 +1,26 @@
+[
+  {
+    "number": 38,
+    "title": "Earlier recent merge",
+    "mergedAt": "2026-10-20T10:30:00Z",
+    "url": "https://github.com/jooservices/control-room/pull/38"
+  },
+  {
+    "number": 40,
+    "title": "Add source foundation",
+    "mergedAt": "2026-10-20T11:30:00Z",
+    "url": "https://github.com/jooservices/control-room/pull/40"
+  },
+  {
+    "number": 39,
+    "title": "Older merge",
+    "mergedAt": "2026-10-19T11:59:00Z",
+    "url": "https://github.com/jooservices/control-room/pull/39"
+  },
+  {
+    "number": 43,
+    "title": "Future timestamp",
+    "mergedAt": "2026-10-20T12:01:00Z",
+    "url": "https://github.com/jooservices/control-room/pull/43"
+  }
+]
