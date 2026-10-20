@@ -112,6 +112,19 @@ class ConfigTest(unittest.TestCase):
 
         self.assertEqual(config.github_project_repos, {})
 
+    def test_bind_host_defaults_to_auto_and_port_is_validated(self):
+        config = load_config(self.write_env(VALID_ENV))
+        self.assertIsNone(config.bind_host)
+        self.assertEqual(config.port, 8080)
+
+        config = load_config(self.write_env(VALID_ENV + "BIND_HOST=10.0.0.5\nPORT=9000\n"))
+        self.assertEqual((config.bind_host, config.port), ("10.0.0.5", 9000))
+
+        for bad in ("PORT=abc", "PORT=70000", "PORT=-1"):
+            with self.subTest(bad=bad):
+                with self.assertRaises(ConfigurationError):
+                    load_config(self.write_env(VALID_ENV + bad + "\n"))
+
     def test_env_example_loads_all_required_settings(self):
         example_path = Path(__file__).parents[1] / ".env.example"
 

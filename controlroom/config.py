@@ -7,6 +7,7 @@ from urllib.parse import urlsplit
 
 
 DEFAULT_INTERVAL_SECONDS = 45
+DEFAULT_PORT = 8080
 
 
 class ConfigurationError(ValueError):
@@ -28,6 +29,8 @@ class Config:
     data_dir: Path
     interval_seconds: int
     github_project_repos: dict[str, str] = field(default_factory=dict)
+    bind_host: str | None = None  # None: the server picks the machine's LAN address
+    port: int = DEFAULT_PORT
 
 
 _REQUIRED_VARIABLES = (
@@ -144,6 +147,15 @@ def load_config(env_file: str | Path = ".env") -> Config:
     if interval_seconds <= 0:
         raise ConfigurationError("COLLECT_INTERVAL_SECONDS must be greater than zero")
 
+    bind_host = values.get("BIND_HOST", "").strip() or None
+
+    try:
+        port = int(values.get("PORT", "").strip() or DEFAULT_PORT)
+    except ValueError:
+        raise ConfigurationError("PORT must be an integer") from None
+    if not 0 <= port <= 65535:
+        raise ConfigurationError("PORT must be between 0 and 65535")
+
     return Config(
         jira_site=jira_site,
         jira_user=values["JIRA_READ_ONLY_USER"].strip(),
@@ -152,4 +164,6 @@ def load_config(env_file: str | Path = ".env") -> Config:
         data_dir=Path(values["DATA_DIR"].strip()).expanduser(),
         interval_seconds=interval_seconds,
         github_project_repos=github_project_repos,
+        bind_host=bind_host,
+        port=port,
     )
