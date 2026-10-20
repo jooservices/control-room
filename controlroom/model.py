@@ -20,7 +20,7 @@ have key, number, title, at, url, and project. ``events.list`` rows have at,
 kind, key, and text, with url on merge events.
 
 ``machine`` contains host, cpus, load, mem, disk, uptimeH, containers, services,
-heartbeatAges, redis, code, leases, workersBusy, history, and runs. History rows
+heartbeatAges, redis, code, leases, workersBusy, workersTotal, history, and runs. History rows
 have t, load, and mem; CI run rows have name, url, status, and mins. ``meta``
 contains asOf, ok, and flowProjects. These keys match
 ``docs/prototype/collect.py`` and the prototype page.
@@ -68,6 +68,7 @@ def empty_snapshot() -> dict[str, object]:
             "code": None,
             "leases": {},
             "workersBusy": 0,
+            "workersTotal": None,
             "history": [],
             "runs": [],
         },

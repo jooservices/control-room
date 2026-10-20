@@ -15,7 +15,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Callable
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 from controlroom.collector import SNAPSHOT_FILE
 from controlroom.config import ConfigurationError, load_config
@@ -87,7 +87,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/snapshot":
             self._snapshot(send_body)
         elif path == "/healthz":
-            self._healthz(send_body)
+            query = parse_qs(urlsplit(self.path).query)
+            self._healthz(send_body, detail=query.get("detail") == ["1"])
         else:
             self._static(path, send_body)
 
@@ -100,7 +101,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         self._send(HTTPStatus.OK, body, "application/json", send_body, api=True)
 
-    def _healthz(self, send_body: bool) -> None:
+    def _healthz(self, send_body: bool, detail: bool = False) -> None:
         try:
             age = max(0.0, self.clock() - self.snapshot_path.stat().st_mtime)
         except OSError:
@@ -108,8 +109,26 @@ class Handler(BaseHTTPRequestHandler):
                        {"ok": False, "ageSeconds": None}, send_body)
             return
         healthy = age < self.max_age
+        report: dict[str, object] = {"ok": healthy, "ageSeconds": round(age, 1)}
+        if detail:
+            report.update(self._collector_detail())
         self._json(HTTPStatus.OK if healthy else HTTPStatus.SERVICE_UNAVAILABLE,
-                   {"ok": healthy, "ageSeconds": round(age, 1)}, send_body)
+                   report, send_body)
+
+    def _collector_detail(self) -> dict[str, object]:
+        """Collector state from the snapshot's ``meta`` (empty when unreadable)."""
+        try:
+            meta = json.loads(self.snapshot_path.read_text(encoding="utf-8"))["meta"]
+        except (OSError, ValueError, KeyError, TypeError):
+            meta = None
+        if not isinstance(meta, dict):
+            meta = {}
+        return {
+            "asOf": meta.get("asOf"),
+            "collector": meta.get("collector"),
+            "sources": meta.get("ok") or {},
+            "errorAt": meta.get("errorAt") or {},
+        }
 
     def _static(self, path: str, send_body: bool) -> None:
         relative = unquote(path).lstrip("/") or "index.html"

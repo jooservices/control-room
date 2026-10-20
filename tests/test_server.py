@@ -1,4 +1,5 @@
 import http.client
+import json
 import os
 import tempfile
 import threading
@@ -84,6 +85,27 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(status, 503)
         self.assertIn(b'"ageSeconds": 31', body)
 
+    def test_healthz_detail_returns_collector_meta(self):
+        meta = {"asOf": "2026-10-20T12:00:00Z", "ok": {"jira": False},
+                "errorAt": {"jira": "2026-10-20T12:00:00Z"},
+                "collector": {"version": "abc1234", "loopCount": 7,
+                              "lastLoopSeconds": 1.5, "sourceErrors": {"jira": 2}}}
+        self.snapshot.write_text(json.dumps({"meta": meta}), encoding="utf-8")
+        status, response, body = self.request("GET", "/healthz?detail=1")
+        report = json.loads(body)
+        self.assertEqual(status, 200)
+        self.assertEqual(response.getheader("Cache-Control"), "no-store")
+        self.assertTrue(report["ok"])
+        self.assertEqual(report["collector"], meta["collector"])
+        self.assertEqual(report["sources"], {"jira": False})
+        self.assertEqual(report["asOf"], meta["asOf"])
+        self.assertNotIn("collector", json.loads(self.request("GET", "/healthz")[2]))
+
+    def test_healthz_detail_tolerates_snapshot_without_meta(self):
+        status, _, body = self.request("GET", "/healthz?detail=1")
+        self.assertEqual(status, 200)
+        self.assertIsNone(json.loads(body)["collector"])
+
     def test_path_traversal_returns_404(self):
         for path in ("/../secret.txt", "/%2e%2e/secret.txt", "/..%2fsecret.txt",
                      "/missing.html"):
@@ -91,6 +113,28 @@ class ServerTests(unittest.TestCase):
 
     def test_lan_address_is_not_wildcard(self):
         self.assertNotEqual(lan_address(), "0.0.0.0")
+
+
+class FooterAssetTests(unittest.TestCase):
+    WEB = Path(__file__).resolve().parent.parent / "web"
+
+    def test_page_has_footer_wired_to_collector_meta(self):
+        page = (self.WEB / "index.html").read_text(encoding="utf-8")
+        script = (self.WEB / "footer.js").read_text(encoding="utf-8")
+        self.assertIn('id="collector-lag"', page)
+        self.assertIn('id="collector-version"', page)
+        self.assertIn('src="footer.js"', page)
+        self.assertNotIn("<script>", page)
+        # The footer is added to the real Control Room page, which keeps its own assets.
+        for asset in ('href="style.css"', 'src="lib.js"', 'src="app.js"', 'id="kpis"'):
+            self.assertIn(asset, page)
+        lib = (self.WEB / "lib.js").read_text(encoding="utf-8")
+        self.assertIn("STALE_AFTER_S = 180, OLD_AFTER_S = 900", lib)
+        self.assertIn("STALE_SECONDS = 180", script)
+        self.assertIn("OLD_SECONDS = 900", script)
+        self.assertIn("meta.asOf", script)
+        self.assertIn("collector.version", script)
+        self.assertIn("/api/snapshot", script)
 
 
 if __name__ == "__main__":

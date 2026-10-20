@@ -1,0 +1,4 @@
+#collector-footer { font: 12px/1.4 system-ui, sans-serif; color: #667; padding: 8px 12px; }
+#collector-footer span + span { margin-left: 12px; }
+#collector-footer.stale { color: #b36b00; }
+#collector-footer.old { color: #b00020; }
