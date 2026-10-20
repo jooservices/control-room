@@ -29,6 +29,8 @@ PROJECTS = {
     "JOOWT": ("JOOservices WP Themes", "jooservices-wp-themes", None),
 }
 
+# Statuses whose waiting time the alert rules need: the changelog says when the ticket entered them.
+_WAIT_STATUSES = ("Blocked", "In QA")
 _ISSUE_FIELDS = "summary,status,issuetype,priority,parent,updated,labels"
 _SEARCH_PAGE_SIZE = 100
 _CHANGELOG_PAGE_SIZE = 100
@@ -77,6 +79,7 @@ def collect_jira(
                     and issue_type.casefold() != "epic"
                     and issue["key"] not in cycle_cache.get(project_key, {})
                 )
+                or status_name in _WAIT_STATUSES
             ):
                 histories_by_issue[issue["key"]] = _fetch_issue_changelogs(
                     config, issue["key"]
@@ -233,7 +236,7 @@ def parse_projects_document(
             epic["_etaExcluded"] = epic_excluded[epic["key"]]
 
         active = [
-            _active_ticket(issue)
+            _active_ticket(issue, histories.get(issue["key"], ()))
             for _, issue in sorted(
                 open_tickets,
                 key=lambda pair: (pair[0], pair[1]["key"]),
@@ -431,8 +434,25 @@ def _is_closed(status: Mapping[str, object]) -> bool:
     return isinstance(category, dict) and category.get("key") == "done"
 
 
-def _active_ticket(issue: dict[str, object]) -> dict[str, object]:
+def _status_since(
+    status_name: str, histories: Sequence[dict[str, object]]
+) -> str | None:
+    """Return when the ticket last moved into ``status_name`` (UTC), or None when its changelog has no such move."""
+    since = None
+    for history in histories:
+        for item in history.get("items", ()):
+            if item.get("field") == "status" and item.get("toString") == status_name:
+                moved = _parse_jira_datetime(history["created"])
+                if since is None or moved > since:
+                    since = moved
+    return _format_utc(since) if since else None
+
+
+def _active_ticket(
+    issue: dict[str, object], histories: Sequence[dict[str, object]] = ()
+) -> dict[str, object]:
     fields = issue["fields"]
+    status_name = (fields.get("status") or {}).get("name", "")
     parent = fields.get("parent") or {}
     return {
         "key": issue["key"],
@@ -442,6 +462,7 @@ def _active_ticket(issue: dict[str, object]) -> dict[str, object]:
         "summary": (fields.get("summary") or "")[:100],
         "parent": parent.get("key") if isinstance(parent, dict) else None,
         "updated": (fields.get("updated") or "")[:16],
+        "statusSince": _status_since(status_name, histories) if status_name in _WAIT_STATUSES else None,
         "labels": list(fields.get("labels") or []),
     }
 

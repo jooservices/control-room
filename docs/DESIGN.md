@@ -9,6 +9,7 @@ Control Room is a LAN-only, read-only view of the AI Flow on the WSL workstation
 - Jira projects, ticket counts and flow progress, with links to Jira and repositories.
 - AI Flow ticket status, recent activity, worker runs, GitHub pull requests and CI runs.
 - AI model availability and worker-machine load, memory, disk, services, heartbeats, Redis state and container count.
+- An alert strip (hidden when nothing is wrong): a worker heartbeat older than 3 minutes, an AI out of the pool, a pull request in QA for more than 90 minutes, a ticket Blocked for more than 24 hours, collector data older than 15 minutes. The rules are pure code in `controlroom/alerts.py`, computed by the collector into `alerts.list`; they are display only and nothing is sent anywhere.
 - Snapshot freshness, source failures, collector version, loop count and last loop duration.
 
 All displayed source values come from the sources described below. The page does not synthesize simulated tickets, runs or machine metrics. Unknown or unavailable values remain empty or are shown as unknown.

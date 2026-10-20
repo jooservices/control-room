@@ -102,3 +102,10 @@ td.num { font-variant-numeric: tabular-nums; font-family: var(--f-mono); font-si
 
 .srcwarn { font: 500 12px var(--f-mono); color: var(--blocked); }
 .srcwarn[hidden] { display: none; }
+
+.alerts { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.alerts[hidden] { display: none; }
+.alert { display: flex; align-items: baseline; gap: 10px; background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--blocked); border-radius: 8px; padding: 8px 12px; font-size: 13px; }
+.alert span { font: 500 11px var(--f-mono); color: var(--blocked); text-transform: uppercase; letter-spacing: .06em; }
+.alert button { all: unset; cursor: pointer; text-decoration: underline; min-width: 0; }
+.alert button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

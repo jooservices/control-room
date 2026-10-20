@@ -9,6 +9,7 @@ import copy
 import datetime as dt
 from typing import Mapping
 
+from controlroom.alerts import compute_alerts
 from controlroom.analytics import eta
 from controlroom.model import FLOW_STATUSES, HOLD_LABEL, empty_snapshot
 
@@ -120,6 +121,7 @@ def assemble(
         "errorAt": error_at,
         "flowProjects": flow_projects,
     }
+    snapshot["alerts"] = {"list": compute_alerts(snapshot, now)}
     return snapshot
 
 
@@ -232,6 +234,7 @@ def _apply_inflight(snapshot, good, flow_projects) -> None:
                         "labels": labels,
                         "agent": None,
                         "updated": ticket["updated"],
+                        "statusSince": ticket.get("statusSince"),
                         "lease": leases.get(ticket["key"]),
                         "pr": None,
                         "devAi": None,
