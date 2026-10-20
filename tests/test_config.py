@@ -41,6 +41,8 @@ class ConfigTest(unittest.TestCase):
         )
         self.assertEqual(config.data_dir, Path("./data"))
         self.assertEqual(config.interval_seconds, 45)
+        self.assertIsNone(config.openobserve_url)
+        self.assertEqual(config.openobserve_org, "default")
 
     def test_missing_variable_names_are_reported_without_values(self):
         env_path = self.write_env(
@@ -58,6 +60,46 @@ class ConfigTest(unittest.TestCase):
 
         self.assertNotIn("top-secret-token", repr(config))
         self.assertNotIn("collector@example.test", repr(config))
+
+    def test_openobserve_credentials_are_optional_and_redacted(self):
+        env = VALID_ENV + (
+            "OPENOBSERVE_URL=https://observe.example.test/\n"
+            "OPENOBSERVE_ORG=flow\n"
+            "OPENOBSERVE_USER=readonly@example.test\n"
+            "OPENOBSERVE_PASSWORD=observe-secret\n"
+        )
+        config = load_config(self.write_env(env))
+
+        self.assertEqual(config.openobserve_url, "https://observe.example.test")
+        self.assertEqual(config.openobserve_org, "flow")
+        self.assertNotIn("readonly@example.test", repr(config))
+        self.assertNotIn("observe-secret", repr(config))
+
+    def test_partial_openobserve_configuration_is_rejected_without_values(self):
+        env = VALID_ENV + "OPENOBSERVE_URL=https://observe.example.test\n"
+
+        with self.assertRaises(ConfigurationError) as raised:
+            load_config(self.write_env(env))
+
+        self.assertIn("OPENOBSERVE_USER", str(raised.exception))
+        self.assertNotIn("observe.example.test", str(raised.exception))
+
+    def test_rejects_invalid_openobserve_urls_and_organization_names(self):
+        credentials = (
+            "OPENOBSERVE_URL=https://observe.example.test\n"
+            "OPENOBSERVE_USER=user\nOPENOBSERVE_PASSWORD=password\n"
+        )
+        for url in ("file:///tmp/observe", "https://user:pass@observe.example.test"):
+            with self.subTest(url=url):
+                env = VALID_ENV + credentials.replace(
+                    "https://observe.example.test", url
+                )
+                with self.assertRaises(ConfigurationError):
+                    load_config(self.write_env(env))
+
+        env = VALID_ENV + credentials + "OPENOBSERVE_ORG=org/name\n"
+        with self.assertRaises(ConfigurationError):
+            load_config(self.write_env(env))
 
     def test_rejects_jira_site_without_hostname_or_valid_port(self):
         for site in ("https://:443", "https://jira.example.test:bad"):
@@ -143,6 +185,7 @@ class ConfigTest(unittest.TestCase):
                 "JOOCR": "jooservices/control-room",
             },
         )
+        self.assertIsNone(config.openobserve_url)
 
 
 if __name__ == "__main__":

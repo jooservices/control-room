@@ -12,7 +12,7 @@ from typing import Mapping
 from controlroom.analytics import eta
 from controlroom.model import FLOW_STATUSES, HOLD_LABEL, empty_snapshot
 
-SOURCES = ("jira", "github", "machine")
+SOURCES = ("jira", "github", "machine", "events")
 
 # Statuses that count as in flight (same list as the prototype collector).
 MAX_EVENTS = 200
@@ -41,6 +41,7 @@ _EVENT_KINDS = {
     "jira": {"status"},
     "machine": {"run", "badrun"},
     "github": {"merge"},
+    "events": set(),
 }
 
 
@@ -109,6 +110,8 @@ def assemble(
     _apply_done_by_ai(snapshot, good, now)
     if "machine" in good:
         _apply_ai(snapshot, good["machine"])
+    if "events" in good:
+        _apply_event_metrics(snapshot, good["events"])
     _apply_machine(snapshot, good, machine_history)
     _apply_project_etas(snapshot, good, flow_projects)
     _apply_timeline(snapshot, good, flow_projects, now, epoch)
@@ -319,7 +322,22 @@ def _apply_ai(snapshot, raw) -> None:
                 "badAll": None,
             }
         )
-    snapshot["ai"] = {"agents": agents, "versions": {}, "usable": {}}
+    usage_by_role = snapshot["ai"].get("usageByRole") or {
+        "24h": [], "7d": [], "30d": []
+    }
+    snapshot["ai"] = {
+        "agents": agents,
+        "versions": {},
+        "usable": {},
+        "usageByRole": usage_by_role,
+    }
+
+
+def _apply_event_metrics(snapshot, raw) -> None:
+    snapshot["flow"]["statusMedianMinutes"] = copy.deepcopy(
+        raw["statusMedianMinutes"]
+    )
+    snapshot["ai"]["usageByRole"] = copy.deepcopy(raw["usageByRole"])
 
 
 def _worker_total(services) -> int | None:

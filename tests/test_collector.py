@@ -70,8 +70,70 @@ def machine_result():
     }
 
 
+def events_result():
+    return {
+        "statusMedianMinutes": {
+            "24h": {"In Progress": 120.0},
+            "7d": {"In Progress": 120.0, "Ready": 1440.0},
+            "30d": {"Build": 1440.0, "In Progress": 120.0, "Ready": 1440.0},
+        },
+        "usageByRole": {
+            "24h": [
+                {
+                    "ai": "Codex",
+                    "role": "developer",
+                    "runs": 1,
+                    "minutes": 2.0,
+                    "tokens": 150,
+                }
+            ],
+            "7d": [],
+            "30d": [],
+        },
+    }
+
+
 def all_results():
-    return {"jira": jira_result(), "github": github_result(), "machine": machine_result()}
+    return {
+        "jira": jira_result(),
+        "github": github_result(),
+        "machine": machine_result(),
+        "events": events_result(),
+    }
+
+
+class CollectSourcesTest(unittest.TestCase):
+    def test_collect_sources_runs_openobserve_as_an_independent_source(self):
+        config = Config(
+            jira_site="https://jira.example.test",
+            jira_user="user",
+            jira_token="token",
+            github_repos=("owner/repo",),
+            data_dir=Path("data"),
+            interval_seconds=45,
+        )
+        with (
+            patch(
+                "controlroom.collector.machine.collect",
+                return_value={"flowProjects": ["JAIF"]},
+            ),
+            patch(
+                "controlroom.collector.jira.collect_jira",
+                return_value=jira_result(),
+            ),
+            patch(
+                "controlroom.collector.github.collect",
+                return_value=github_result(),
+            ),
+            patch(
+                "controlroom.collector.events.collect",
+                return_value=events_result(),
+            ) as event_source,
+        ):
+            results = collector.collect_sources(config, None, now=NOW)
+
+        event_source.assert_called_once_with(config, now=NOW)
+        self.assertEqual(results["events"], events_result())
 
 
 class WorkerTotalTests(unittest.TestCase):
@@ -144,7 +206,10 @@ class AssembleTest(unittest.TestCase):
         snapshot = assemble(all_results(), None, now=NOW)
 
         self.assertEqual(snapshot["meta"]["asOf"], "2026-10-20T12:00:00Z")
-        self.assertEqual(snapshot["meta"]["ok"], {"jira": True, "github": True, "machine": True})
+        self.assertEqual(
+            snapshot["meta"]["ok"],
+            {"jira": True, "github": True, "machine": True, "events": True},
+        )
         self.assertEqual(snapshot["meta"]["flowProjects"], ["JOOCR"])
         row = snapshot["projects"]["list"][0]
         self.assertEqual(row["mergedPRs"][0]["number"], 7)
@@ -169,6 +234,11 @@ class AssembleTest(unittest.TestCase):
         self.assertEqual(snapshot["machine"]["workersBusy"], 1)
         self.assertEqual(snapshot["machine"]["workersTotal"], 2)
         self.assertEqual(snapshot["machine"]["host"], "Workstation")
+        self.assertEqual(
+            snapshot["flow"]["statusMedianMinutes"],
+            events_result()["statusMedianMinutes"],
+        )
+        self.assertEqual(snapshot["ai"]["usageByRole"], events_result()["usageByRole"])
         self.assertEqual(snapshot["machine"]["runs"][0]["name"], "ci")
         self.assertEqual(
             sorted(e["kind"] for e in snapshot["events"]["list"]), ["merge", "run", "status"]
@@ -240,7 +310,8 @@ class AssembleTest(unittest.TestCase):
         self.assertEqual(old_status["link"], {"type": "ticket", "key": "JOOCR-5"})
         self.assertEqual(second["machine"]["load"], [9.0, 0, 0])
         self.assertEqual(
-            second["meta"]["ok"], {"jira": False, "github": True, "machine": True}
+            second["meta"]["ok"],
+            {"jira": False, "github": True, "machine": True, "events": True},
         )
         self.assertEqual(second["meta"]["errorAt"], {"jira": "2026-10-20T12:00:45Z"})
         self.assertEqual(second["meta"]["asOf"], "2026-10-20T12:00:45Z")
@@ -258,12 +329,18 @@ class AssembleTest(unittest.TestCase):
 
     def test_total_failure_keeps_as_of_and_documents(self):
         first = assemble(all_results(), None, now=NOW)
-        failed = {name: OSError("x") for name in ("jira", "github", "machine")}
+        failed = {
+            name: OSError("x")
+            for name in ("jira", "github", "machine", "events")
+        }
 
         second = assemble(failed, first, now=NOW + dt.timedelta(minutes=5))
 
         self.assertEqual(second["meta"]["asOf"], first["meta"]["asOf"])
-        self.assertEqual(second["meta"]["ok"], {"jira": False, "github": False, "machine": False})
+        self.assertEqual(
+            second["meta"]["ok"],
+            {"jira": False, "github": False, "machine": False, "events": False},
+        )
         for name in ("projects", "flow", "ai", "events", "machine"):
             self.assertEqual(second[name], first[name])
 
@@ -272,6 +349,28 @@ class AssembleTest(unittest.TestCase):
         self.assertIn("jira", first["meta"]["errorAt"])
         second = assemble(all_results(), first, now=NOW + dt.timedelta(seconds=45))
         self.assertEqual(second["meta"]["errorAt"], {})
+
+    def test_failed_events_source_keeps_only_event_metrics_stale(self):
+        first = assemble(all_results(), None, now=NOW)
+        results = all_results()
+        results["events"] = RuntimeError("OpenObserve down")
+        results["jira"][0]["list"][0]["counts"] = {"In Progress": 3}
+
+        second = assemble(
+            results, first, now=NOW + dt.timedelta(seconds=45)
+        )
+
+        self.assertEqual(
+            second["flow"]["statusMedianMinutes"],
+            first["flow"]["statusMedianMinutes"],
+        )
+        self.assertEqual(second["ai"]["usageByRole"], first["ai"]["usageByRole"])
+        self.assertEqual(second["flow"]["statusCounts"], {"In Progress": 3})
+        self.assertEqual(
+            second["meta"]["ok"],
+            {"jira": True, "github": True, "machine": True, "events": False},
+        )
+        self.assertEqual(second["meta"]["errorAt"], {"events": "2026-10-20T12:00:45Z"})
 
 
 class FlowStateTest(unittest.TestCase):
@@ -447,7 +546,7 @@ class RunOnceTest(unittest.TestCase):
             self.assertEqual(first["loopCount"], 1)
             self.assertGreaterEqual(first["lastLoopSeconds"], 0)
             self.assertEqual(first["sourceErrors"],
-                             {"jira": 0, "github": 0, "machine": 0})
+                             {"jira": 0, "github": 0, "machine": 0, "events": 0})
 
             failing = {**all_results(), "github": OSError("x")}
             for step in (1, 2):

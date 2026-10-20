@@ -14,7 +14,7 @@ from typing import Callable, Mapping
 from controlroom.assembler import assemble
 from controlroom.config import Config, ConfigurationError, load_config
 from controlroom.history import HistoryStore, snapshot_samples
-from controlroom.sources import github, jira, machine
+from controlroom.sources import events, github, jira, machine
 
 SNAPSHOT_FILE = "snapshot.json"
 HISTORY_FILE = "history.db"
@@ -90,6 +90,7 @@ def collect_sources(
         ),
     )
     run("github", lambda: github.collect(config.github_project_repos, now=now))
+    run("events", lambda: events.collect(config, now=now))
     return results
 
 
