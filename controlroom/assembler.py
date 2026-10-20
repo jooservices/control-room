@@ -294,7 +294,12 @@ def _apply_ai(snapshot, raw) -> None:
     for agent_id, (name, model, effort, roles) in AGENTS.items():
         runs = [run for run in usage if run.get("ai") == name]
         last_day = [run for run in runs if base - run["end"] < 86400]
-        probe = probes.get("wsl:" + name) or ""
+        raw_probe = probes.get("wsl:" + name) or ""
+        probe = (
+            "down"
+            if raw_probe.startswith("down")
+            else "ok" if raw_probe else "not probed yet"
+        )
         agents.append(
             {
                 "id": agent_id,
@@ -302,7 +307,7 @@ def _apply_ai(snapshot, raw) -> None:
                 "model": model,
                 "effort": effort,
                 "roles": roles,
-                "probe": probe or "not probed yet",
+                "probe": probe,
                 "usable": not probe.startswith("down"),
                 "cooling": name in cooldown,
                 "runs24h": len(last_day),
@@ -325,7 +330,7 @@ def _apply_machine(snapshot, good, machine_history) -> None:
         leases = raw.get("leases") or {}
         machine.update(
             {
-                "host": raw.get("host", ""),
+                "host": "Workstation",
                 "cpus": raw.get("cpus"),
                 "load": raw.get("load"),
                 "mem": raw.get("mem"),
@@ -416,7 +421,7 @@ def _apply_events(snapshot, good, now) -> None:
                 run.get("ai"), run.get("role"), run.get("minutes")
             )
             if not finished:
-                text += " (ended: {})".format(run.get("why"))
+                text += " (failed)"
             events.append(
                 {
                     "at": iso(dt.datetime.fromtimestamp(run["end"], dt.timezone.utc)),
