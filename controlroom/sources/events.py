@@ -20,14 +20,12 @@ PERIODS = {
     "7d": dt.timedelta(days=7),
     "30d": dt.timedelta(days=30),
 }
-# Status intervals ending inside a window start at an earlier transition.
-STATUS_LOOKBACK = dt.timedelta(days=60)
 _EVENT_TYPES = {"ticket.status", "step.run", "ai.usage"}
 _UTC = dt.timezone.utc
 
 
 def collect(config: Config, *, now: dt.datetime) -> dict[str, object]:
-    """Query the last 30 days (plus a status lookback) and return status and AI usage aggregates."""
+    """Query the last 30 days plus earlier status history; return status and AI usage aggregates."""
     _require_aware(now)
     if (
         not config.openobserve_url
@@ -39,7 +37,7 @@ def collect(config: Config, *, now: dt.datetime) -> dict[str, object]:
     if not is_secure_openobserve_url(config.openobserve_url):
         raise RuntimeError("OpenObserve credentials require HTTPS")
 
-    start = now.astimezone(_UTC) - PERIODS["30d"] - STATUS_LOOKBACK
+    start = now.astimezone(_UTC) - PERIODS["30d"]
     start_us = int(start.timestamp() * 1_000_000)
     end_us = int(now.astimezone(_UTC).timestamp() * 1_000_000)
     endpoint = urljoin(
@@ -53,6 +51,15 @@ def collect(config: Config, *, now: dt.datetime) -> dict[str, object]:
         "Authorization": "Basic " + base64.b64encode(credential).decode("ascii")
     }
     rows = _search_rows(endpoint, headers, start_us=start_us, end_us=end_us)
+    # A status interval ending inside the window starts at the ticket's
+    # previous transition, however old: read all earlier status history.
+    rows += _search_rows(
+        endpoint,
+        headers,
+        start_us=0,
+        end_us=start_us,
+        events=("ticket.status",),
+    )
     return parse_query_result({"hits": rows}, now=now)
 
 
@@ -62,14 +69,14 @@ def _search_rows(
     *,
     start_us: int,
     end_us: int,
+    events: tuple[str, ...] = ("ticket.status", "step.run", "ai.usage"),
 ) -> list[dict[str, object]]:
     """Fetch bounded pages from the OpenObserve read-only search endpoint."""
     rows: list[dict[str, object]] = []
     expected_total = None
-    sql = (
-        'SELECT * FROM "{}" WHERE "event" IN '
-        "('ticket.status', 'step.run', 'ai.usage') ORDER BY _timestamp ASC"
-    ).format(STREAM)
+    sql = 'SELECT * FROM "{}" WHERE "event" IN ({}) ORDER BY _timestamp ASC'.format(
+        STREAM, ", ".join("'{}'".format(name) for name in events)
+    )
     for offset in range(0, MAX_ROWS, PAGE_SIZE):
         response = http.search_json(
             endpoint,

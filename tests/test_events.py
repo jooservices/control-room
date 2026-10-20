@@ -105,6 +105,28 @@ class ParseEventsTest(unittest.TestCase):
         self.assertEqual(result["statusMedianMinutes"]["30d"], {"Blocked": 2880.0})
         self.assertEqual(result["statusMedianMinutes"]["7d"], {})
 
+    def test_collect_reads_status_history_older_than_any_fixed_horizon(self):
+        old = {"event": "ticket.status", "ticket_key": "JOO-1", "to_status": "Blocked",
+               "_timestamp": "2026-06-01T12:00:00Z"}
+        recent = {"event": "ticket.status", "ticket_key": "JOO-1", "to_status": "Done",
+                  "_timestamp": "2026-10-19T12:00:00Z"}
+        with patch(
+            "controlroom.sources.events.http.search_json",
+            side_effect=[{"hits": [recent]}, {"hits": [old]}],
+        ) as search:
+            result = events.collect(configured(), now=NOW)
+
+        history = search.call_args_list[1].args[1]["query"]
+        self.assertEqual(history["start_time"], 0)
+        self.assertEqual(
+            history["end_time"],
+            int((NOW - dt.timedelta(days=30)).timestamp() * 1_000_000),
+        )
+        self.assertIn("'ticket.status'", history["sql"])
+        self.assertNotIn("'step.run'", history["sql"])
+        self.assertEqual(len(result["statusMedianMinutes"]["30d"]), 1)
+        self.assertGreater(result["statusMedianMinutes"]["30d"]["Blocked"], 100 * 1440)
+
     def test_collect_rejects_plain_http_to_remote_host(self):
         config = dataclasses.replace(configured(), openobserve_url="http://observe.example.test")
         with patch("controlroom.sources.events.http.search_json") as search:
@@ -138,15 +160,15 @@ class ParseEventsTest(unittest.TestCase):
 
 
 class CollectEventsTest(unittest.TestCase):
-    def test_collect_uses_basic_auth_and_a_90_day_search_window(self):
+    def test_collect_uses_basic_auth_and_a_30_day_search_window(self):
         fixture = search_fixture()
         with patch(
             "controlroom.sources.events.http.search_json",
-            return_value=fixture,
+            side_effect=[fixture, dict(hits=[])],
         ) as search:
             result = events.collect(configured(), now=NOW)
 
-        endpoint, payload = search.call_args.args
+        endpoint, payload = search.call_args_list[0].args
         request_query = payload["query"]
         self.assertEqual(
             endpoint, "https://observe.example.test/api/flow/_search"
@@ -155,7 +177,7 @@ class CollectEventsTest(unittest.TestCase):
         self.assertEqual(request_query["size"], events.PAGE_SIZE)
         self.assertEqual(
             request_query["start_time"],
-            int((NOW - dt.timedelta(days=90)).timestamp() * 1_000_000),
+            int((NOW - dt.timedelta(days=30)).timestamp() * 1_000_000),
         )
         self.assertEqual(request_query["end_time"], int(NOW.timestamp() * 1_000_000))
         self.assertIn('"aiflow_events"', request_query["sql"])
@@ -163,7 +185,7 @@ class CollectEventsTest(unittest.TestCase):
         self.assertIn("'ticket.status'", request_query["sql"])
         self.assertIn("'step.run'", request_query["sql"])
         self.assertIn("'ai.usage'", request_query["sql"])
-        auth = search.call_args.kwargs["headers"]["Authorization"]
+        auth = search.call_args_list[0].kwargs["headers"]["Authorization"]
         expected = base64.b64encode(b"openobserve-user:openobserve-password").decode(
             "ascii"
         )
