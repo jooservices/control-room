@@ -426,6 +426,21 @@ class AssembleTest(unittest.TestCase):
         self.assertEqual(
             omitted["ai"]["usageByRole"], {"24h": [], "7d": [], "30d": []}
         )
+    def test_snapshot_restored_without_event_keys_is_backfilled(self):
+        first = assemble(all_results(), None, now=NOW)
+        del first["flow"]["statusMedianMinutes"]
+        del first["ai"]["usageByRole"]
+        results = all_results()
+        del results["events"]
+
+        restored = assemble(results, first, now=NOW + dt.timedelta(seconds=45))
+
+        self.assertEqual(
+            restored["flow"]["statusMedianMinutes"], {"24h": {}, "7d": {}, "30d": {}}
+        )
+        self.assertEqual(
+            restored["ai"]["usageByRole"], {"24h": [], "7d": [], "30d": []}
+        )
 
 
 class FlowStateTest(unittest.TestCase):

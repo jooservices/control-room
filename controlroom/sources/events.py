@@ -99,6 +99,7 @@ def _search_rows(
                     "end_time": end_us,
                     "from": offset,
                     "size": PAGE_SIZE,
+                    "track_total_hits": True,
                 }
             },
             headers=headers,
@@ -116,20 +117,16 @@ def _search_rows(
                 raise ValueError("OpenObserve search response has invalid total")
             if total < offset + len(page):
                 raise ValueError("OpenObserve search response total is inconsistent")
-            if expected_total is not None and total != expected_total:
-                raise ValueError("OpenObserve search total changed during paging")
             expected_total = total
 
         rows.extend(dict(row) for row in page)
-        if expected_total is not None and len(rows) >= expected_total:
-            return rows
+        # Only a short page ends the loop: without exact totals "total" can be
+        # the page count, so a full first page must never look complete.
         if len(page) < PAGE_SIZE:
             if expected_total is not None and len(rows) < expected_total:
                 raise ValueError("OpenObserve search returned an incomplete page")
             return rows
 
-    if expected_total is not None and len(rows) >= expected_total:
-        return rows
     raise ValueError("OpenObserve search exceeded the row limit")
 
 

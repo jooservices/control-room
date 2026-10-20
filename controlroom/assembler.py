@@ -66,6 +66,16 @@ def _reset_event_metrics(snapshot: dict[str, object]) -> None:
     snapshot["ai"]["usageByRole"] = empty["ai"]["usageByRole"]
 
 
+def _backfill_event_keys(snapshot: dict[str, object]) -> None:
+    """Add event keys that a snapshot restored from an older version lacks."""
+    empty = empty_snapshot()
+    for section, key in (("flow", "statusMedianMinutes"), ("ai", "usageByRole")):
+        if not isinstance(snapshot.get(section), dict):
+            snapshot[section] = empty[section]
+        elif key not in snapshot[section]:
+            snapshot[section][key] = empty[section][key]
+
+
 def assemble(
     results: Mapping[str, object],
     previous: Mapping[str, object] | None,
@@ -90,6 +100,7 @@ def assemble(
         for name, value in previous.items():
             if name != "version" and name in snapshot:
                 snapshot[name] = copy.deepcopy(value)
+    _backfill_event_keys(snapshot)
     old_meta = snapshot["meta"] if isinstance(snapshot["meta"], dict) else {}
     now_iso = iso(now)
     epoch = int(now.timestamp())
