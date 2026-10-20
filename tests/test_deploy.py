@@ -36,6 +36,14 @@ class SystemdUnitTemplateTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "exactly one"):
                 render_unit(template, temporary_directory)
 
+    def test_renderer_rejects_control_characters_in_checkout_path(self):
+        template = Path(__file__).resolve().parents[1] / "deploy" / "controlroom-server.service"
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            bad_root = Path(temporary_directory) / "bad\nExecStartPre=/bin/false"
+
+            with self.assertRaisesRegex(ValueError, "control characters"):
+                render_unit(template, bad_root)
+
 
 if __name__ == "__main__":
     unittest.main()

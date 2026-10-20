@@ -26,6 +26,7 @@ if [[ "$linger" != yes ]]; then
 fi
 
 mkdir -p "$UNIT_DIR"
+changed=()
 for unit in controlroom-collector.service controlroom-server.service; do
   target="$UNIT_DIR/$unit"
   temporary="$(mktemp "$UNIT_DIR/.${unit}.XXXXXX")"
@@ -39,12 +40,17 @@ for unit in controlroom-collector.service controlroom-server.service; do
     rm -f -- "$temporary"
   else
     mv -f -- "$temporary" "$target"
+    changed+=("$unit")
   fi
 done
 
 systemctl --user daemon-reload
 systemctl --user enable --now \
   controlroom-collector.service controlroom-server.service
+# enable --now leaves a running service on its old definition; restart the ones whose unit changed.
+if ((${#changed[@]})); then
+  systemctl --user restart "${changed[@]}"
+fi
 
 printf 'Enabled Control Room user services. Check status with:\n'
 printf '  systemctl --user status controlroom-collector.service controlroom-server.service\n'

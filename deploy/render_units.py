@@ -15,6 +15,8 @@ def render_unit(template_path: str | Path, repo_root: str | Path) -> str:
         raise ValueError("unit template must contain exactly one repository path marker")
 
     path = str(Path(repo_root).resolve())
+    if any(ord(char) < 0x20 or ord(char) == 0x7F for char in path):
+        raise ValueError("repository path must not contain control characters")
     escaped_path = (
         path.replace("\\", "\\\\")
         .replace('"', '\\"')
