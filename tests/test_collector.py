@@ -148,9 +148,25 @@ class FlowStateTest(unittest.TestCase):
 
     def test_uncollected_flow_fields_are_unknown_not_zero(self):
         flow = assemble(self.results_with_active(), None, now=NOW)["flow"]
-        for name in ("doneByAiLast24h", "reworkLast24h", "paused", "qaslot"):
+        for name in ("reworkLast24h", "paused", "qaslot"):
             self.assertIsNone(flow[name])
         self.assertIsNone(flow["cycle"]["n"])
+
+    def test_done_by_ai_counts_done_transitions_of_ai_worked_tickets(self):
+        results = self.results_with_active()
+        results["jira"][1].extend([
+            {"at": "2026-10-20T11:00:00Z", "kind": "status", "key": "JOOCR-5",
+             "text": "In Review → Done"},
+            {"at": "2026-10-20T11:30:00Z", "kind": "status", "key": "JOOCR-9",
+             "text": "In Review → Done"},
+            {"at": "2026-10-20T11:40:00Z", "kind": "status", "key": "JOOCR-5",
+             "text": "To Do → In Progress"},
+        ])
+        first = assemble(results, None, now=NOW)
+        self.assertEqual(first["flow"]["doneByAiLast24h"], 1)
+        results["jira"] = RuntimeError("down")
+        second = assemble(results, first, now=NOW)
+        self.assertEqual(second["flow"]["doneByAiLast24h"], 1)
 
     def test_machine_only_update_refreshes_leases_on_kept_rows(self):
         first = assemble(self.results_with_active(), None, now=NOW)

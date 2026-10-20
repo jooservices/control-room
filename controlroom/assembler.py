@@ -115,6 +115,7 @@ def assemble(
     _apply_projects(snapshot, good)
     _apply_flow(snapshot, good, flow_projects, now)
     _apply_inflight(snapshot, good, flow_projects)
+    _apply_done_by_ai(snapshot, good, now)
     if "machine" in good:
         _apply_ai(snapshot, good["machine"])
     _apply_machine(snapshot, good, machine_history)
@@ -236,6 +237,30 @@ def _apply_inflight(snapshot, good, flow_projects) -> None:
     elif leases is not None and isinstance(flow.get("inflight"), list):
         for row in flow["inflight"]:
             row["lease"] = leases.get(row["key"])
+
+
+def _apply_done_by_ai(snapshot, good, now) -> None:
+    """Count tickets moved to Done in 24 hours that an AI worked on.
+
+    Needs both Jira status events and machine usage; when either source is
+    down the previous value stays.
+    """
+    if "jira" not in good or "machine" not in good:
+        return
+    base = good["machine"].get("now", int(now.timestamp()))
+    worked = {
+        run.get("key")
+        for run in good["machine"].get("usage") or []
+        if run.get("key") and base - run["end"] < 86400
+    }
+    done = {
+        event["key"]
+        for event in good["jira"][1]
+        if event.get("kind") == "status"
+        and event["text"].rsplit("→", 1)[-1].strip() == "Done"
+        and _within(event.get("at"), now, 86400)
+    }
+    snapshot["flow"]["doneByAiLast24h"] = len(done & worked)
 
 
 def _minutes(rows) -> float:
