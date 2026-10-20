@@ -1,0 +1,13 @@
+{
+  "startAt": 1,
+  "maxResults": 1,
+  "total": 3,
+  "isLast": false,
+  "values": [
+    {
+      "id": "102",
+      "created": "2026-10-19T12:00:00.000+0000",
+      "items": [{"field": "status", "fromString": "Open", "toString": "Review"}]
+    }
+  ]
+}

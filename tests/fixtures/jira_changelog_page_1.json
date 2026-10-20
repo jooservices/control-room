@@ -1,0 +1,13 @@
+{
+  "startAt": 0,
+  "maxResults": 1,
+  "total": 3,
+  "isLast": false,
+  "values": [
+    {
+      "id": "101",
+      "created": "2026-10-19T11:59:59.000+0000",
+      "items": [{"field": "status", "fromString": "To Do", "toString": "Open"}]
+    }
+  ]
+}

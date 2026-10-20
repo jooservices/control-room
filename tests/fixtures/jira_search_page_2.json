@@ -1,0 +1,41 @@
+{
+  "issues": [
+    {
+      "id": "4",
+      "key": "DEMO-4",
+      "fields": {
+        "summary": "Anonymized recently completed task",
+        "status": {"name": "Done", "statusCategory": {"key": "done"}},
+        "issuetype": {"name": "Task"},
+        "priority": {"name": "Medium"},
+        "parent": {"key": "DEMO-1"},
+        "updated": "2026-10-20T10:05:00.000+0000"
+      }
+    },
+    {
+      "id": "5",
+      "key": "DEMO-5",
+      "fields": {
+        "summary": "Anonymized declined story",
+        "status": {"name": "Declined", "statusCategory": {"key": "done"}},
+        "issuetype": {"name": "Story"},
+        "priority": {"name": "Low"},
+        "parent": null,
+        "updated": "2026-10-20T10:10:00.000+0000"
+      }
+    },
+    {
+      "id": "6",
+      "key": "DEMO-6",
+      "fields": {
+        "summary": "Anonymized recently updated open task",
+        "status": {"name": "Open", "statusCategory": {"key": "new"}},
+        "issuetype": {"name": "Task"},
+        "priority": {"name": "Medium"},
+        "parent": null,
+        "updated": "2026-10-20T11:40:00.000+0000"
+      }
+    }
+  ],
+  "isLast": true
+}
