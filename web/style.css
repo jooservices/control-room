@@ -108,7 +108,7 @@ td.num { font-variant-numeric: tabular-nums; font-family: var(--f-mono); font-si
 .srcbanner li { overflow-wrap: anywhere; }
 .stale-tag { display: inline-block; border: 1px dashed var(--blocked); border-radius: 4px; padding: 0 6px; font: 600 11px var(--f-mono); color: var(--blocked); text-transform: uppercase; letter-spacing: .04em; }
 .stale-tag[hidden] { display: none; }
-.card.is-stale > :not(h2) { opacity: .55; }
+.card.is-stale > :not(h2) { font-style: italic; } /* no opacity: dimming would drop text below 4.5:1 */
 .card.is-stale { border-style: dashed; border-color: var(--blocked); }
 .kpi.is-stale b { font-size: 20px; color: var(--blocked); }
 

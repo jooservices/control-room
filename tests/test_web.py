@@ -208,6 +208,15 @@ class WebTests(unittest.TestCase):
         self.assertIn("overflow-x: hidden", css)
         self.assertIn("width=device-width, initial-scale=1", html)
 
+    def test_stale_state_does_not_dim_text_below_contrast(self):
+        css = (WEB / "style.css").read_text(encoding="utf-8")
+        for rule in re.findall(r"[^{}]*is-stale[^{}]*\{([^}]*)\}", css):
+            self.assertNotIn("opacity", rule)
+        for theme, palette in themes().items():
+            for fg in ("ink", "ink-2", "blocked"):
+                ratio = contrast(palette[fg], palette["panel"])
+                self.assertGreaterEqual(ratio, 4.5, "{} stale {} on panel: {:.2f}".format(theme, fg, ratio))
+
     def test_text_contrast_is_at_least_4_5_to_1_in_both_themes(self):
         for theme, palette in themes().items():
             for fg, bgs in TEXT_ON.items():
