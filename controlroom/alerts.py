@@ -7,6 +7,7 @@ that the page uses to open the drawer.
 """
 
 import datetime as dt
+import re
 
 HEARTBEAT_MAX_SECONDS = 3 * 60
 CI_WAIT_MAX_SECONDS = 90 * 60
@@ -70,7 +71,7 @@ def compute_alerts(snapshot, now):
         waited = _age(ticket.get("statusSince"), now)
         if waited is None:
             continue
-        has_open_pr = any(ticket["key"] in title for title in open_pr_titles)
+        has_open_pr = any(re.search(rf"(?<![\w-]){re.escape(ticket['key'])}(?!\w)", title) for title in open_pr_titles)
         if ticket.get("status") == "In QA" and has_open_pr and waited > CI_WAIT_MAX_SECONDS:
             alerts.append({
                 "rule": "ci", "subject": ticket["key"],

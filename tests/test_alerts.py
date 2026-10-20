@@ -54,6 +54,11 @@ class AlertRulesTest(unittest.TestCase):
         flow = {"inflight": [{"key": "JOOCR-9", "status": "In QA", "statusSince": at(5 * 3600)}]}
         self.assertEqual(self.rules(snapshot(flow=flow)), [])
 
+    def test_ticket_key_must_match_whole_in_the_pull_request_title(self):
+        flow = {"inflight": [{"key": "JOOCR-1", "status": "In QA", "statusSince": at(5 * 3600)}]}
+        other = {"list": [{"key": "JOOCR", "openPRs": [{"number": 9, "title": "feat: y (JOOCR-10)"}]}]}
+        self.assertEqual(self.rules(snapshot(flow=flow, projects=other)), [])
+
     def test_blocked_boundary(self):
         def flow(seconds):
             return {"inflight": [{"key": "JOOCR-2", "status": "Blocked", "statusSince": at(seconds)}]}
