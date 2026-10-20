@@ -198,10 +198,13 @@ def _apply_flow(snapshot, good, flow_projects, now) -> None:
         )
 
 
+HOLD_LABEL = "aiflow-hold"
+
+
 def _apply_inflight(snapshot, good, flow_projects) -> None:
     """Fill ``flow.inflight`` from Jira active rows and machine leases.
 
-    Fields no source collects (labels, agent, PR link, role AIs) are ``None``
+    Tickets labelled ``aiflow-hold`` are left out. Fields no source collects (agent, PR link, role AIs) are ``None``
     rather than invented values.
     """
     flow = snapshot["flow"]
@@ -217,6 +220,9 @@ def _apply_inflight(snapshot, good, flow_projects) -> None:
             for ticket in project["active"]:
                 if ticket["status"] not in FLOW_STATUSES:
                     continue
+                labels = ticket.get("labels") or []
+                if HOLD_LABEL in labels:
+                    continue
                 rows.append(
                     {
                         "key": ticket["key"],
@@ -224,7 +230,7 @@ def _apply_inflight(snapshot, good, flow_projects) -> None:
                         "summary": ticket["summary"],
                         "status": ticket["status"],
                         "priority": ticket["priority"],
-                        "labels": None,
+                        "labels": labels,
                         "agent": None,
                         "updated": ticket["updated"],
                         "lease": leases.get(ticket["key"]),

@@ -159,6 +159,15 @@ class FlowStateTest(unittest.TestCase):
         ]
         return {"jira": jira, "github": github_result(), "machine": machine_result()}
 
+    def test_inflight_excludes_held_tickets(self):
+        results = self.results_with_active()
+        active = results["jira"][0]["list"][0]["active"]
+        active[0]["labels"] = ["aiflow-hold"]
+        active.append(dict(active[1], key="JOOCR-7", status="In Progress", labels=["x"]))
+        flow = assemble(results, None, now=NOW)["flow"]
+        self.assertEqual([row["key"] for row in flow["inflight"]], ["JOOCR-7"])
+        self.assertEqual(flow["inflight"][0]["labels"], ["x"])
+
     def test_inflight_comes_from_jira_active_and_machine_leases(self):
         flow = assemble(self.results_with_active(), None, now=NOW)["flow"]
         self.assertEqual([row["key"] for row in flow["inflight"]], ["JOOCR-5"])
