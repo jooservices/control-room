@@ -2,17 +2,19 @@ import threading
 import time
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 
 from controlroom.http import get, get_json
 
 
 class FakeHandler(BaseHTTPRequestHandler):
     request_methods = []
+    request_paths = []
     retry_requests = 0
 
     def do_GET(self):
         type(self).request_methods.append(self.command)
+        type(self).request_paths.append(self.path)
         if self.path == "/retry":
             type(self).retry_requests += 1
             if type(self).retry_requests == 1:
@@ -20,6 +22,11 @@ class FakeHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 return
             body = b'{"ok": true}'
+        elif self.path == "/ftp-redirect":
+            self.send_response(302)
+            self.send_header("Location", "ftp://127.0.0.1:1/forbidden")
+            self.end_headers()
+            return
         elif self.path == "/slow":
             time.sleep(0.2)
             body = b"slow"
@@ -39,10 +46,13 @@ class FakeHandler(BaseHTTPRequestHandler):
 
 
 class HttpTest(unittest.TestCase):
+    def setUp(self):
+        FakeHandler.request_methods = []
+        FakeHandler.request_paths = []
+        FakeHandler.retry_requests = 0
+
     @classmethod
     def setUpClass(cls):
-        FakeHandler.request_methods = []
-        FakeHandler.retry_requests = 0
         cls.server = ThreadingHTTPServer(("127.0.0.1", 0), FakeHandler)
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
@@ -71,6 +81,15 @@ class HttpTest(unittest.TestCase):
             with self.subTest(url=url):
                 with self.assertRaisesRegex(ValueError, "http or https"):
                     get(url, retries=0)
+
+    def test_rejects_ftp_redirect_before_following_it(self):
+        with self.assertRaises(HTTPError) as error:
+            get(self.base_url + "/ftp-redirect", retries=0)
+
+        self.assertEqual(
+            error.exception.msg, "redirect target must use http or https"
+        )
+        self.assertEqual(FakeHandler.request_paths.count("/ftp-redirect"), 1)
 
 
 if __name__ == "__main__":

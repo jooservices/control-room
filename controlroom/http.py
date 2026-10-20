@@ -5,10 +5,30 @@ import time
 from typing import Mapping
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
 _RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+
+
+class _HTTPOnlyRedirectHandler(HTTPRedirectHandler):
+    """Follow redirects only when their targets remain on HTTP or HTTPS."""
+
+    def redirect_request(self, request, file_pointer, code, message, headers, new_url):
+        if urlsplit(new_url).scheme not in {"http", "https"}:
+            raise HTTPError(
+                new_url,
+                code,
+                "redirect target must use http or https",
+                headers,
+                file_pointer,
+            )
+        return super().redirect_request(
+            request, file_pointer, code, message, headers, new_url
+        )
+
+
+_HTTP_OPENER = build_opener(_HTTPOnlyRedirectHandler())
 
 
 def get(
@@ -37,7 +57,7 @@ def get(
     request = Request(url, headers=dict(headers or {}), method="GET")
     for attempt in range(retries + 1):
         try:
-            with urlopen(request, timeout=timeout) as response:
+            with _HTTP_OPENER.open(request, timeout=timeout) as response:
                 return response.read()
         except HTTPError as error:
             if error.code not in _RETRYABLE_STATUS_CODES or attempt == retries:
