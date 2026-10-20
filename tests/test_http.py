@@ -1,0 +1,71 @@
+import threading
+import time
+import unittest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.error import URLError
+
+from controlroom.http import get, get_json
+
+
+class FakeHandler(BaseHTTPRequestHandler):
+    request_methods = []
+    retry_requests = 0
+
+    def do_GET(self):
+        type(self).request_methods.append(self.command)
+        if self.path == "/retry":
+            type(self).retry_requests += 1
+            if type(self).retry_requests == 1:
+                self.send_response(503)
+                self.end_headers()
+                return
+            body = b'{"ok": true}'
+        elif self.path == "/slow":
+            time.sleep(0.2)
+            body = b"slow"
+        else:
+            body = b"body"
+
+        self.send_response(200)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        try:
+            self.wfile.write(body)
+        except BrokenPipeError:
+            pass
+
+    def log_message(self, format, *args):
+        pass
+
+
+class HttpTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        FakeHandler.request_methods = []
+        FakeHandler.retry_requests = 0
+        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), FakeHandler)
+        cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
+        cls.thread.start()
+        cls.base_url = "http://127.0.0.1:{}".format(cls.server.server_address[1])
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+        cls.server.server_close()
+        cls.thread.join()
+
+    def test_retries_transient_status_and_returns_json(self):
+        response = get_json(self.base_url + "/retry", retries=1, backoff=0)
+
+        self.assertEqual(response, {"ok": True})
+        self.assertEqual(FakeHandler.retry_requests, 2)
+        self.assertEqual(FakeHandler.request_methods, ["GET", "GET"])
+
+    def test_timeout_is_enforced(self):
+        with self.assertRaises((URLError, TimeoutError)):
+            get(self.base_url + "/slow", timeout=0.05, retries=0, backoff=0)
+        self.assertTrue(all(method == "GET" for method in FakeHandler.request_methods))
+
+
+if __name__ == "__main__":
+    unittest.main()
