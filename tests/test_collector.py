@@ -399,6 +399,18 @@ class AssembleTest(unittest.TestCase):
         )
         self.assertEqual(second["meta"]["errorAt"], {"events": "2026-10-20T12:00:45Z"})
 
+    def test_omitted_events_source_clears_previous_failure_marker(self):
+        results = all_results()
+        results["events"] = RuntimeError("OpenObserve down")
+        failed = assemble(results, None, now=NOW)
+        self.assertIn("events", failed["meta"]["errorAt"])
+        del results["events"]
+
+        omitted = assemble(results, failed, now=NOW + dt.timedelta(seconds=45))
+
+        self.assertNotIn("events", omitted["meta"]["ok"])
+        self.assertNotIn("events", omitted["meta"]["errorAt"])
+
 
 class FlowStateTest(unittest.TestCase):
     def results_with_active(self):

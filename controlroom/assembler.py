@@ -92,7 +92,8 @@ def assemble(
     error_at = dict(old_meta.get("errorAt") or {})
     for name in SOURCES:
         if name == "events" and name not in results:
-            continue  # OpenObserve is optional: an omitted source is not a failure
+            error_at.pop(name, None)  # OpenObserve is optional: omitted is not a failure
+            continue
         result = results.get(name, RuntimeError("missing"))
         failure = source_failure(name, result)
         ok[name] = failure is None
