@@ -82,15 +82,15 @@ def run_once(
     results = collect(config, previous, now)
 
     store = HistoryStore(config.data_dir / HISTORY_FILE)
-    snapshot = assemble(
-        results, previous, now=now, machine_history=store.machine_history()
-    )
-    write_snapshot(snapshot_path, snapshot)
+    snapshot = assemble(results, previous, now=now)
 
+    # Insert this round's samples first so the chart history includes them.
     samples = snapshot_samples(snapshot)
     if samples:
         store.insert(int(now.timestamp()), samples)
     store.prune(now)
+    snapshot["machine"]["history"] = store.machine_history()
+    write_snapshot(snapshot_path, snapshot)
     return snapshot
 
 

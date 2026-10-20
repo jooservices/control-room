@@ -265,7 +265,8 @@ class RunOnceTest(unittest.TestCase):
                 jira_site="https://x.example", jira_user="u", jira_token="t",
                 github_repos=("a/b",), data_dir=Path(tmp), interval_seconds=45,
             )
-            collector.run_once(config, now=NOW, collect=lambda *_: all_results())
+            first = collector.run_once(config, now=NOW, collect=lambda *_: all_results())
+            self.assertEqual(len(first["machine"]["history"]), 1)
             later = NOW + dt.timedelta(seconds=45)
             failing = {**all_results(), "machine": OSError("x")}
             snapshot = collector.run_once(config, now=later, collect=lambda *_: failing)
