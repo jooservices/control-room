@@ -194,7 +194,7 @@ class CollectEventsTest(unittest.TestCase):
         self.assertEqual(auth, "Basic " + expected)
         self.assertEqual(result["usageByRole"]["24h"][0]["tokens"], 150)
 
-    def test_search_paginates_until_the_reported_total_is_fetched(self):
+    def test_search_paginates_until_a_short_page(self):
         first_page = {"hits": [{"id": 1}, {"id": 2}], "total": 3}
         second_page = {"hits": [{"id": 3}], "total": 3}
         with patch.object(events, "PAGE_SIZE", 2), patch(
@@ -213,10 +213,10 @@ class CollectEventsTest(unittest.TestCase):
             [call.args[1]["query"]["from"] for call in search.call_args_list], [0, 2]
         )
 
-    def test_full_first_page_is_not_complete_when_total_is_the_page_count(self):
+    def test_total_reporting_only_the_page_hit_count_is_ignored(self):
         pages = [
             {"hits": [{"id": 1}, {"id": 2}], "total": 2},
-            {"hits": [{"id": 3}], "total": 3},
+            {"hits": [{"id": 3}], "total": 1},
         ]
         with patch.object(events, "PAGE_SIZE", 2), patch(
             "controlroom.sources.events.http.search_json", side_effect=pages
@@ -230,19 +230,6 @@ class CollectEventsTest(unittest.TestCase):
 
         self.assertEqual(len(rows), 3)
         self.assertTrue(search.call_args_list[0].args[1]["query"]["track_total_hits"])
-
-    def test_incomplete_search_page_is_a_source_failure(self):
-        with patch(
-            "controlroom.sources.events.http.search_json",
-            return_value={"hits": [], "total": 1},
-        ):
-            with self.assertRaisesRegex(ValueError, "incomplete page"):
-                events._search_rows(
-                    "https://observe.example.test/api/flow/_search",
-                    {},
-                    start_us=1,
-                    end_us=2,
-                )
 
     def test_missing_credentials_raise_without_a_network_request(self):
         config = configured()

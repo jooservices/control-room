@@ -76,7 +76,6 @@ def _search_rows(
 ) -> list[dict[str, object]]:
     """Fetch bounded pages from the OpenObserve read-only search endpoint."""
     rows: list[dict[str, object]] = []
-    expected_total = None
     names = ", ".join("'{}'".format(name) for name in events)
     if latest_per_ticket:
         sql = (
@@ -111,20 +110,10 @@ def _search_rows(
             not isinstance(row, Mapping) for row in page
         ):
             raise ValueError("OpenObserve search response has invalid hits")
-        total = response.get("total")
-        if total is not None:
-            if isinstance(total, bool) or not isinstance(total, int) or total < 0:
-                raise ValueError("OpenObserve search response has invalid total")
-            if total < offset + len(page):
-                raise ValueError("OpenObserve search response total is inconsistent")
-            expected_total = total
-
         rows.extend(dict(row) for row in page)
-        # Only a short page ends the loop: without exact totals "total" can be
-        # the page count, so a full first page must never look complete.
+        # Only a short page ends the loop: "total" can be the page count, so it
+        # is never used to judge completeness.
         if len(page) < PAGE_SIZE:
-            if expected_total is not None and len(rows) < expected_total:
-                raise ValueError("OpenObserve search returned an incomplete page")
             return rows
 
     raise ValueError("OpenObserve search exceeded the row limit")
