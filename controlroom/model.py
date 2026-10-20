@@ -18,7 +18,10 @@ Inflight ticket rows have key, project, summary, status, priority, labels,
 agent, updated, lease, pr, devAi, and reviewerAi; a linked ``pr`` has number,
 url, state, and draft. ``ai`` contains agents, versions, and usable; each agent
 has id, name, model, effort, roles, probe, usable, cooling, runs24h, minutes24h,
-bad24h, runsAll, minutesAll, and badAll. ``timeline`` contains runs, merges,
+bad24h, runsAll, minutesAll, and badAll. ``ai.usage`` rows come from the
+history store's run log (each run stored once by usage-log key) and have ai, role,
+and runs, minutes and bad (runs that did not end ok) for each window: the keys
+end in 24h, 7d or 30d (for example runs7d). ``timeline`` contains runs, merges,
 and now. Run rows have key, role, ai, start, end, minutes, and ok; merge rows
 have key, number, title, at, url, and project. ``events.list`` rows have at,
 kind, key, project, and text, plus a ``link`` object with ``type`` (ticket,
@@ -73,7 +76,7 @@ def empty_snapshot() -> dict[str, object]:
             "qaslot": None,
             "paused": None,
         },
-        "ai": {"agents": [], "versions": {}, "usable": {}},
+        "ai": {"agents": [], "versions": {}, "usable": {}, "usage": []},
         "timeline": {"runs": [], "merges": [], "now": 0},
         "events": {"list": []},
         "machine": {
