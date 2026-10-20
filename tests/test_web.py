@@ -217,6 +217,17 @@ class WebTests(unittest.TestCase):
                 ratio = contrast(palette[fg], palette["panel"])
                 self.assertGreaterEqual(ratio, 4.5, "{} stale {} on panel: {:.2f}".format(theme, fg, ratio))
 
+    def test_timeline_labels_are_not_dimmed_and_pass_on_every_role_bar(self):
+        app = (WEB / "app.js").read_text(encoding="utf-8")
+        for tag in re.findall(r"<text class=\"seg-t\"[^>]*>", app):
+            self.assertNotIn("opacity", tag)
+        css = (WEB / "style.css").read_text(encoding="utf-8")
+        self.assertNotIn("opacity", re.search(r"\.seg-t \{([^}]*)\}", css).group(1))
+        for theme, palette in themes().items():
+            for bar in ("run", "todo", "wait"):
+                ratio = contrast(palette["on-color"], palette[bar])
+                self.assertGreaterEqual(ratio, 4.5, "{} timeline label on {}: {:.2f}".format(theme, bar, ratio))
+
     def test_text_contrast_is_at_least_4_5_to_1_in_both_themes(self):
         for theme, palette in themes().items():
             for fg, bgs in TEXT_ON.items():
