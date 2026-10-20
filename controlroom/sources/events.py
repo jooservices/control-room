@@ -61,7 +61,10 @@ def _search_rows(
     """Fetch bounded pages from the OpenObserve read-only search endpoint."""
     rows: list[dict[str, object]] = []
     expected_total = None
-    sql = 'SELECT * FROM "{}" ORDER BY _timestamp ASC'.format(STREAM)
+    sql = (
+        'SELECT * FROM "{}" WHERE "event" IN '
+        "('ticket.status', 'step.run', 'ai.usage') ORDER BY _timestamp ASC"
+    ).format(STREAM)
     for offset in range(0, MAX_ROWS, PAGE_SIZE):
         response = http.search_json(
             endpoint,

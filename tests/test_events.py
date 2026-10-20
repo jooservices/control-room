@@ -136,6 +136,10 @@ class CollectEventsTest(unittest.TestCase):
         )
         self.assertEqual(request_query["end_time"], int(NOW.timestamp() * 1_000_000))
         self.assertIn('"aiflow_events"', request_query["sql"])
+        self.assertIn('"event" IN', request_query["sql"])
+        self.assertIn("'ticket.status'", request_query["sql"])
+        self.assertIn("'step.run'", request_query["sql"])
+        self.assertIn("'ai.usage'", request_query["sql"])
         auth = search.call_args.kwargs["headers"]["Authorization"]
         expected = base64.b64encode(b"openobserve-user:openobserve-password").decode(
             "ascii"
