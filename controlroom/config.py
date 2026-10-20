@@ -7,7 +7,7 @@ from urllib.parse import urlsplit
 
 
 DEFAULT_INTERVAL_SECONDS = 45
-DEFAULT_PORT = 8080
+DEFAULT_PORT = 8088
 
 
 class ConfigurationError(ValueError):
