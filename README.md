@@ -1,39 +1,50 @@
-# control-room
+# Control Room
 
-Read-only live view of the AI Flow (Jira project `JOOCR`). One page, always up to date, that shows every project, its progress and ETA, the tickets in the flow, the AI runs, the AI models, the worker machine and the event feed, with links out to Jira, GitHub, pull requests and CI. It never writes to Jira, GitHub or the worker machine.
+Control Room is a read-only live view of the AI Flow. It shows Jira projects and tickets, GitHub pull requests and CI, AI runs, and the WSL worker machine. The collector reads these sources and writes a local snapshot; the web server serves that snapshot and the static page. Nothing in Control Room writes to Jira, GitHub, or the worker machine.
 
-New here (person or AI)? Read [docs/DESIGN.md](docs/DESIGN.md) first, then the ai-flow guide `ai-flow/docs/CONTEXT.md`.
+## Run it
 
-## Parts
-1. **Collector**: a service on the WSL workstation. Every 30 to 60 seconds it reads Jira, GitHub and the worker machine and writes one snapshot (JSON) plus a history.
-2. **Web server**: standard library only, GET only. Serves the page, `/api/snapshot`, `/api/history` and a live stream (server-sent events). LAN only.
-3. **Frontend**: one static page, no build step, light and dark theme, works on a phone.
+After configuring `.env` as described below, install and start the WSL user services from the repository root:
 
-## Rules
-- Read-only everywhere. The Jira API token lives in the ignored `.env`; GitHub uses the `gh` CLI's credential store. Both credentials must be read-only, and no secrets are shown on the page or written to a snapshot.
-- Python 3 standard library only. Tests run with `python3 -m unittest discover -s tests`.
-- Conventional Commits, pull request to `develop`, CI green.
+```sh
+./deploy/install.sh
+systemctl --user status controlroom-collector.service controlroom-server.service
+```
 
-## Credentials and read-only permissions
+The collector runs once per `COLLECT_INTERVAL_SECONDS` (45 seconds by default). The server listens on the configured `BIND_HOST` and `PORT` (8088 by default); when `BIND_HOST` is empty, it selects the machine's LAN address. See the [operator runbook](docs/RUNBOOK.md) for start and stop commands, health checks, upgrades, rollback and troubleshooting.
 
-Use a dedicated Jira service account with the **Browse Projects** permission only
-for the projects configured for collection. Its Jira API token should have the
-`read:jira-work` scope and no write or administration scopes. Jira's project and
-issue security permissions still limit which issues the account can read. The
-collector makes only `GET` requests. See Atlassian's [Jira API token scope
-guidance](https://support.atlassian.com/user-management/docs/manage-api-tokens-for-service-accounts/)
-and [Jira REST API scopes](https://developer.atlassian.com/cloud/jira/platform/scopes-for-oauth-2-3LO-and-forge-apps/).
+## Configuration
 
-Authenticate `gh` with a fine-grained GitHub token limited to the repositories
-listed in `GITHUB_REPOS` and `GITHUB_PROJECT_REPOS`. Grant only repository
-**Metadata: read**, **Pull requests: read**, and **Actions: read**; do not grant
-write permissions. These are the permissions used by `gh pr list` and
-`gh run list`. See GitHub's [fine-grained token permission
-reference](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens)
-and the [`gh pr list`](https://cli.github.com/manual/gh_pr_list) and
-[`gh run list`](https://cli.github.com/manual/gh_run_list) command references.
+Copy `.env.example` to `.env` and set the read-only Jira account and token. `gh` must already be authenticated with read access to the repositories in `GITHUB_REPOS`; GitHub credentials are not stored in `.env`.
 
-Keep the Jira site, account, and token in the ignored `.env`; never include
-configuration values in the snapshot. The snapshot is the only data boundary
-for the page and API: expose normalized status and metrics only, use the generic
-machine label `Workstation`, and do not include raw logs or diagnostic details.
+| Setting | Required | Purpose |
+| --- | --- | --- |
+| `JIRA_SITE` | Yes | Jira site URL. |
+| `JIRA_READ_ONLY_USER` | Yes | Jira account email. |
+| `JIRA_READ_ONLY_TOKEN` | Yes | Jira API token for that read-only account. |
+| `GITHUB_REPOS` | Yes | Comma-separated `owner/repository` list used by the GitHub collector. |
+| `GITHUB_PROJECT_REPOS` | No | Comma-separated `PROJECT=owner/repository` mapping for project links and pull requests. |
+| `DATA_DIR` | Yes | Directory for the snapshot and history; defaults to `./data` relative to the service working directory. |
+| `COLLECT_INTERVAL_SECONDS` | No | Collection interval; defaults to 45 seconds. |
+| `BIND_HOST` | No | Explicit server bind address; empty selects the LAN address. |
+| `PORT` | No | Web port; defaults to 8088. |
+
+Keep `.env` private. It is ignored by Git. Do not put credentials in a snapshot or paste them into logs or support messages.
+
+## Data directory
+
+`DATA_DIR` contains:
+
+- `snapshot.json`: latest normalized data used by the page and API.
+- `history.db`: SQLite metric samples used for machine history and trends. Samples older than 90 days are pruned during collection.
+
+The collector creates the directory and writes the snapshot atomically. Keep this directory and `.env` across code upgrades; neither is part of the tracked checkout. There is no schema migration step.
+
+## Checks
+
+Run the test suite with `python3 -m unittest discover -s tests -v`. CI also runs `python3 -m compileall -q controlroom` and a server smoke test against a fixture snapshot.
+
+## Documentation
+
+- [Runbook](docs/RUNBOOK.md): install, operate, upgrade, roll back and troubleshoot.
+- [Design](docs/DESIGN.md): current components, sources, data flow and failure behavior.
