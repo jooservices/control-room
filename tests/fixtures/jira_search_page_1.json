@@ -1,0 +1,42 @@
+{
+  "issues": [
+    {
+      "id": "1",
+      "key": "DEMO-1",
+      "fields": {
+        "summary": "Anonymized release epic",
+        "status": {"name": "In Progress", "statusCategory": {"key": "indeterminate"}},
+        "issuetype": {"name": "Epic"},
+        "priority": {"name": "Medium"},
+        "parent": null,
+        "updated": "2026-10-18T09:00:00.000+0000"
+      }
+    },
+    {
+      "id": "2",
+      "key": "DEMO-2",
+      "fields": {
+        "summary": "Anonymized open story",
+        "status": {"name": "In Progress", "statusCategory": {"key": "indeterminate"}},
+        "issuetype": {"name": "Story"},
+        "priority": {"name": "High"},
+        "parent": {"key": "DEMO-1"},
+        "updated": "2026-10-20T11:15:00.000+0000"
+      }
+    },
+    {
+      "id": "3",
+      "key": "DEMO-3",
+      "fields": {
+        "summary": "Anonymized older completed task",
+        "status": {"name": "Done", "statusCategory": {"key": "done"}},
+        "issuetype": {"name": "Task"},
+        "priority": {"name": "Low"},
+        "parent": {"key": "DEMO-1"},
+        "updated": "2026-10-19T11:50:00.000+0000"
+      }
+    }
+  ],
+  "nextPageToken": "next page/+2",
+  "isLast": false
+}
