@@ -41,6 +41,35 @@ class ServerTests(unittest.TestCase):
         finally:
             connection.close()
 
+    def open_stream(self):
+        connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        self.addCleanup(connection.close)
+        connection.request("GET", "/api/stream")
+        return connection.getresponse()
+
+    @staticmethod
+    def next_data(response):
+        while True:
+            line = response.fp.readline().decode("utf-8")
+            if line.startswith("data:"):
+                return line.strip()
+
+    def test_stream_sends_the_snapshot_as_an_event(self):
+        response = self.open_stream()
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.getheader("Content-Type"),
+                         "text/event-stream; charset=utf-8")
+        self.assertEqual(response.getheader("Cache-Control"), "no-store")
+        self.assertEqual(response.fp.readline(), b"event: snapshot\n")
+        self.assertEqual(self.next_data(response), 'data: {"version": 1}')
+
+    def test_stream_pushes_again_when_the_snapshot_changes(self):
+        response = self.open_stream()
+        self.next_data(response)
+        self.snapshot.write_text('{"version":2}', encoding="utf-8")
+        os.utime(self.snapshot, (time.time() + 5, time.time() + 5))
+        self.assertEqual(self.next_data(response), 'data: {"version": 2}')
+
     def test_static_page_and_security_headers(self):
         status, response, body = self.request("GET", "/")
         self.assertEqual(status, 200)

@@ -118,6 +118,11 @@ class WebTests(unittest.TestCase):
         self.assertNotIn("/ 2'", app)
         self.assertNotIn("n / 2", app)
 
+    def test_app_generates_no_inline_handlers_and_guards_unknown_totals(self):
+        app = (WEB / "app.js").read_text(encoding="utf-8")
+        self.assertNotRegex(app, r"""onclick=["']""")
+        self.assertIn("a.runsAll == null ? 'not recorded'", app)
+
 
 if __name__ == "__main__":
     unittest.main()
