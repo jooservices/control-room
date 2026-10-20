@@ -105,9 +105,9 @@ class ParseEventsTest(unittest.TestCase):
         self.assertEqual(result["statusMedianMinutes"]["30d"], {"Blocked": 2880.0})
         self.assertEqual(result["statusMedianMinutes"]["7d"], {})
 
-    def test_collect_reads_status_history_older_than_any_fixed_horizon(self):
+    def test_collect_keeps_interval_over_120_days_with_latest_predecessor_query(self):
         old = {"event": "ticket.status", "ticket_key": "JOO-1", "to_status": "Blocked",
-               "_timestamp": "2026-06-01T12:00:00Z"}
+               "_timestamp": "2026-03-01T12:00:00Z"}
         recent = {"event": "ticket.status", "ticket_key": "JOO-1", "to_status": "Done",
                   "_timestamp": "2026-10-19T12:00:00Z"}
         with patch(
@@ -124,8 +124,10 @@ class ParseEventsTest(unittest.TestCase):
         )
         self.assertIn("'ticket.status'", history["sql"])
         self.assertNotIn("'step.run'", history["sql"])
+        self.assertIn("row_number() OVER", history["sql"])
+        self.assertIn("rn = 1", history["sql"])
         self.assertEqual(len(result["statusMedianMinutes"]["30d"]), 1)
-        self.assertGreater(result["statusMedianMinutes"]["30d"]["Blocked"], 100 * 1440)
+        self.assertGreater(result["statusMedianMinutes"]["30d"]["Blocked"], 200 * 1440)
 
     def test_collect_rejects_plain_http_to_remote_host(self):
         config = dataclasses.replace(configured(), openobserve_url="http://observe.example.test")

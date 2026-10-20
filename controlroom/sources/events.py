@@ -52,13 +52,15 @@ def collect(config: Config, *, now: dt.datetime) -> dict[str, object]:
     }
     rows = _search_rows(endpoint, headers, start_us=start_us, end_us=end_us)
     # A status interval ending inside the window starts at the ticket's
-    # previous transition, however old: read all earlier status history.
+    # previous transition, however old: read only the latest status event
+    # per ticket before the window, not the whole earlier history.
     rows += _search_rows(
         endpoint,
         headers,
         start_us=0,
         end_us=start_us,
         events=("ticket.status",),
+        latest_per_ticket=True,
     )
     return parse_query_result({"hits": rows}, now=now)
 
@@ -70,13 +72,23 @@ def _search_rows(
     start_us: int,
     end_us: int,
     events: tuple[str, ...] = ("ticket.status", "step.run", "ai.usage"),
+    latest_per_ticket: bool = False,
 ) -> list[dict[str, object]]:
     """Fetch bounded pages from the OpenObserve read-only search endpoint."""
     rows: list[dict[str, object]] = []
     expected_total = None
-    sql = 'SELECT * FROM "{}" WHERE "event" IN ({}) ORDER BY _timestamp ASC'.format(
-        STREAM, ", ".join("'{}'".format(name) for name in events)
-    )
+    names = ", ".join("'{}'".format(name) for name in events)
+    if latest_per_ticket:
+        sql = (
+            "SELECT * FROM (SELECT *, row_number() OVER ("
+            'PARTITION BY "ticket_key" ORDER BY _timestamp DESC) AS rn '
+            'FROM "{}" WHERE "event" IN ({})) WHERE rn = 1 '
+            'ORDER BY "ticket_key" ASC'
+        ).format(STREAM, names)
+    else:
+        sql = 'SELECT * FROM "{}" WHERE "event" IN ({}) ORDER BY _timestamp ASC'.format(
+            STREAM, names
+        )
     for offset in range(0, MAX_ROWS, PAGE_SIZE):
         response = http.search_json(
             endpoint,
