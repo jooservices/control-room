@@ -109,6 +109,10 @@ class ParseEventsTest(unittest.TestCase):
                 now=NOW,
             )
 
+    def test_event_column_wins_over_type_and_name_fields(self):
+        row = {"event": "step.run", "type": "agent", "name": "build"}
+        self.assertEqual(events._event_kind(row), "step.run")
+
     def test_rejects_invalid_search_response(self):
         with self.assertRaisesRegex(ValueError, "invalid hits"):
             events.parse_query_result({"hits": {}}, now=NOW)
