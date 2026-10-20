@@ -29,3 +29,43 @@ jobs:
 
       - name: Unit tests
         run: python3 -m unittest discover -s tests -v
+
+      - name: Smoke test (server on a fixture snapshot)
+        run: |
+          set -euo pipefail
+          fixture="$(mktemp -d)"
+          server_pid=""
+          trap 'if [ -n "$server_pid" ]; then kill "$server_pid" 2>/dev/null || true; fi; rm -rf "$fixture"' EXIT
+          mkdir "$fixture/web" "$fixture/data"
+          echo '<!doctype html><title>fixture</title>' > "$fixture/web/index.html"
+          echo '{"fixture": true}' > "$fixture/data/snapshot.json"
+          cat > "$fixture/env" <<ENV
+          JIRA_SITE=https://example.invalid
+          JIRA_READ_ONLY_USER=fixture@example.invalid
+          JIRA_READ_ONLY_TOKEN=fixture
+          GITHUB_REPOS=example/fixture
+          DATA_DIR=$fixture/data
+          BIND_HOST=127.0.0.1
+          PORT=18765
+          ENV
+          python3 -m controlroom.server --env-file "$fixture/env" --web-dir "$fixture/web" &
+          server_pid=$!
+          base=http://127.0.0.1:18765
+          for _ in $(seq 1 50); do
+            curl -s -o /dev/null "$base/healthz" && break
+            sleep 0.2
+          done
+          check() {
+            want="$1"; shift
+            got="$(curl -s -o /dev/null -w '%{http_code}' "$@")"
+            if [ "$got" != "$want" ]; then
+              echo "FAIL: expected $want, got $got for: $*"
+              exit 1
+            fi
+            echo "ok $want $*"
+          }
+          check 200 "$base/"
+          check 200 "$base/api/snapshot"
+          check 200 "$base/healthz"
+          check 405 -X POST "$base/api/snapshot"
+          curl -s "$base/api/snapshot" | grep -q '"fixture": true'
