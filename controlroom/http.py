@@ -31,9 +31,10 @@ class _HTTPOnlyRedirectHandler(HTTPRedirectHandler):
 _HTTP_OPENER = build_opener(_HTTPOnlyRedirectHandler())
 
 
-def get(
+def request(
     url: str,
     *,
+    method: str = "GET",
     headers: Mapping[str, str] | None = None,
     timeout: float = 10.0,
     retries: int = 2,
@@ -43,8 +44,11 @@ def get(
 
     ``retries`` is the number of attempts after the initial request. Retryable
     HTTP statuses are 429 and 5xx; URL and timeout errors are also retried.
-    The final failure is propagated to the caller.
+    The final failure is propagated to the caller. Other methods are rejected
+    before any network request is made.
     """
+    if method != "GET":
+        raise ValueError("only GET requests are allowed")
     if timeout <= 0:
         raise ValueError("timeout must be greater than zero")
     if retries < 0:
@@ -72,6 +76,25 @@ def get(
             time.sleep(backoff * (2**attempt))
 
     raise AssertionError("unreachable")
+
+
+def get(
+    url: str,
+    *,
+    headers: Mapping[str, str] | None = None,
+    timeout: float = 10.0,
+    retries: int = 2,
+    backoff: float = 0.25,
+) -> bytes:
+    """Fetch bytes using the read-only GET request boundary."""
+    return request(
+        url,
+        method="GET",
+        headers=headers,
+        timeout=timeout,
+        retries=retries,
+        backoff=backoff,
+    )
 
 
 def get_json(

@@ -4,7 +4,7 @@ import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.error import HTTPError, URLError
 
-from controlroom.http import get, get_json
+from controlroom.http import get, get_json, request
 
 
 class FakeHandler(BaseHTTPRequestHandler):
@@ -70,6 +70,14 @@ class HttpTest(unittest.TestCase):
         self.assertEqual(response, {"ok": True})
         self.assertEqual(FakeHandler.retry_requests, 2)
         self.assertEqual(FakeHandler.request_methods, ["GET", "GET"])
+
+    def test_rejects_non_get_methods_before_network_io(self):
+        for method in ("POST", "PUT", "PATCH", "DELETE"):
+            with self.subTest(method=method):
+                with self.assertRaisesRegex(ValueError, "only GET"):
+                    request(self.base_url + "/forbidden", method=method)
+
+        self.assertEqual(FakeHandler.request_paths, [])
 
     def test_timeout_is_enforced(self):
         with self.assertRaises((URLError, TimeoutError)):
