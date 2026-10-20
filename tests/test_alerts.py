@@ -15,7 +15,8 @@ def snapshot(**parts):
         "meta": {"asOf": at(30)},
         "machine": {"heartbeatAges": {"hb:w1": 5}},
         "ai": {"agents": [{"id": "codex", "name": "Codex", "usable": True}]},
-        "flow": {"inflight": [{"key": "JOOCR-1", "status": "In QA", "updatedAt": at(60)}]},
+        "flow": {"inflight": [{"key": "JOOCR-1", "status": "In QA", "statusSince": at(60)}]},
+        "projects": {"list": [{"key": "JOOCR", "openPRs": [{"number": 8, "title": "feat: x (JOOCR-1)"}]}]},
     }
     base.update(parts)
     return base
@@ -43,15 +44,19 @@ class AlertRulesTest(unittest.TestCase):
 
     def test_pull_request_waiting_for_ci_boundary(self):
         def flow(seconds, status="In QA"):
-            return {"inflight": [{"key": "JOOCR-1", "status": status, "updatedAt": at(seconds)}]}
+            return {"inflight": [{"key": "JOOCR-1", "status": status, "statusSince": at(seconds)}]}
 
         self.assertEqual(self.rules(snapshot(flow=flow(90 * 60))), [])
         self.assertEqual(self.rules(snapshot(flow=flow(90 * 60 + 1))), [("ci", "JOOCR-1")])
         self.assertEqual(self.rules(snapshot(flow=flow(5 * 3600, "In Review"))), [])
 
+    def test_qa_without_an_open_pull_request_is_not_a_ci_wait(self):
+        flow = {"inflight": [{"key": "JOOCR-9", "status": "In QA", "statusSince": at(5 * 3600)}]}
+        self.assertEqual(self.rules(snapshot(flow=flow)), [])
+
     def test_blocked_boundary(self):
         def flow(seconds):
-            return {"inflight": [{"key": "JOOCR-2", "status": "Blocked", "updatedAt": at(seconds)}]}
+            return {"inflight": [{"key": "JOOCR-2", "status": "Blocked", "statusSince": at(seconds)}]}
 
         self.assertEqual(self.rules(snapshot(flow=flow(24 * 3600))), [])
         alerts = compute_alerts(snapshot(flow=flow(24 * 3600 + 1)), NOW)
@@ -63,7 +68,7 @@ class AlertRulesTest(unittest.TestCase):
         self.assertEqual(self.rules(snapshot(meta={"asOf": at(15 * 60 + 1)})), [("collector", "collector")])
 
     def test_ticket_without_a_usable_time_is_ignored(self):
-        flow = {"inflight": [{"key": "JOOCR-3", "status": "Blocked", "updatedAt": None}]}
+        flow = {"inflight": [{"key": "JOOCR-3", "status": "Blocked", "statusSince": None}]}
         self.assertEqual(self.rules(snapshot(flow=flow)), [])
 
 
@@ -76,6 +81,23 @@ class AssemblerAlertsTest(unittest.TestCase):
         older = {"meta": {"asOf": at(20 * 60)}}
         again = assemble({}, {**snap, **older}, now=NOW)
         self.assertEqual([a["rule"] for a in again["alerts"]["list"]], ["collector"])
+
+
+class StatusSinceTest(unittest.TestCase):
+    def test_uses_the_latest_move_into_the_status_not_the_last_edit(self):
+        from controlroom.sources.jira import _status_since
+
+        def move(at_, to):
+            return {"created": at_, "items": [{"field": "status", "toString": to}]}
+
+        histories = [
+            move("2026-10-19T08:00:00.000+0000", "Blocked"),
+            move("2026-10-19T09:00:00.000+0000", "To Do"),
+            move("2026-10-19T10:00:00.000+0000", "Blocked"),
+            {"created": "2026-10-20T10:00:00.000+0000", "items": [{"field": "labels", "toString": "x"}]},
+        ]
+        self.assertEqual(_status_since("Blocked", histories), "2026-10-19T10:00:00Z")
+        self.assertIsNone(_status_since("In QA", histories))
 
 
 if __name__ == "__main__":

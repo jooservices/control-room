@@ -1,6 +1,7 @@
 """Alert rules: what needs the owner's attention, computed from a finished snapshot.
 
 ``compute_alerts`` is pure. Alerts are display only: nothing is sent anywhere.
+Waiting times run from the moment the ticket entered the status (``statusSince``, from the Jira changelog), not from its last edit.
 Each alert has rule, subject, text and a ``link`` object (type ticket or ai, plus key)
 that the page uses to open the drawer.
 """
@@ -60,14 +61,20 @@ def compute_alerts(snapshot, now):
                 "link": {"type": "ai", "key": agent.get("id")},
             })
 
+    open_pr_titles = [
+        pr.get("title") or ""
+        for project in (snapshot.get("projects") or {}).get("list") or []
+        for pr in project.get("openPRs") or []
+    ]
     for ticket in (snapshot.get("flow") or {}).get("inflight") or []:
-        waited = _age(ticket.get("updatedAt"), now)
+        waited = _age(ticket.get("statusSince"), now)
         if waited is None:
             continue
-        if ticket.get("status") == "In QA" and waited > CI_WAIT_MAX_SECONDS:
+        has_open_pr = any(ticket["key"] in title for title in open_pr_titles)
+        if ticket.get("status") == "In QA" and has_open_pr and waited > CI_WAIT_MAX_SECONDS:
             alerts.append({
                 "rule": "ci", "subject": ticket["key"],
-                "text": f"{ticket['key']} has waited {_minutes(waited)} minutes in QA for its pull request",
+                "text": f"{ticket['key']} has had its pull request in QA for {_minutes(waited)} minutes",
                 "link": {"type": "ticket", "key": ticket["key"]},
             })
         if ticket.get("status") == "Blocked" and waited > BLOCKED_MAX_SECONDS:

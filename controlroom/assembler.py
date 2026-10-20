@@ -234,7 +234,7 @@ def _apply_inflight(snapshot, good, flow_projects) -> None:
                         "labels": labels,
                         "agent": None,
                         "updated": ticket["updated"],
-                        "updatedAt": ticket.get("updatedAt"),
+                        "statusSince": ticket.get("statusSince"),
                         "lease": leases.get(ticket["key"]),
                         "pr": None,
                         "devAi": None,
