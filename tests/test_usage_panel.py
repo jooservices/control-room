@@ -51,13 +51,10 @@ class UsagePanelTest(unittest.TestCase):
         self.assertEqual((claude["runs30d"], claude["minutes30d"]), (1, 2.0))
 
     def test_non_finite_or_negative_minutes_are_skipped(self):
-        store = HistoryStore(Path(self.tmp) / "h.db") if hasattr(self, "tmp") else None
-        if store is None:
-            self.skipTest("no temp dir")
-        bad = [run(1, "codex", "dev", m) for m in (float("nan"), float("inf"), -1)]
-        for i, r in enumerate(bad):
-            r["name"] += str(i)
-        self.assertEqual(store.record_runs(bad), 0)
+        bad = [run(1, "Codex", "developer", m, ticket="B-%d" % i)
+               for i, m in enumerate((float("nan"), float("inf"), -1))]
+        self.assertEqual(self.store.record_runs(bad), 0)
+        self.assertEqual(self.store.usage_panel(FIXTURE_NOW), [])
 
     def test_minutes_are_summed_before_rounding_once(self):
         self.store.record_runs([
