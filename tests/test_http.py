@@ -66,6 +66,12 @@ class HttpTest(unittest.TestCase):
             get(self.base_url + "/slow", timeout=0.05, retries=0, backoff=0)
         self.assertTrue(all(method == "GET" for method in FakeHandler.request_methods))
 
+    def test_rejects_non_http_url_schemes(self):
+        for url in ("file:///etc/passwd", "ftp://example.test/file"):
+            with self.subTest(url=url):
+                with self.assertRaisesRegex(ValueError, "http or https"):
+                    get(url, retries=0)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -77,6 +77,8 @@ def load_config(env_file: str | Path = ".env") -> Config:
     jira_site = values["JIRA_SITE"].strip().rstrip("/")
     try:
         parsed_site = urlsplit(jira_site)
+        hostname = parsed_site.hostname
+        port = parsed_site.port
     except ValueError:
         raise ConfigurationError(
             "JIRA_SITE must be a valid HTTP or HTTPS URL"
@@ -84,6 +86,8 @@ def load_config(env_file: str | Path = ".env") -> Config:
     if (
         parsed_site.scheme not in {"http", "https"}
         or not parsed_site.netloc
+        or not hostname
+        or port == 0
         or parsed_site.username
         or parsed_site.password
         or parsed_site.query
@@ -91,11 +95,17 @@ def load_config(env_file: str | Path = ".env") -> Config:
     ):
         raise ConfigurationError("JIRA_SITE must be an HTTP or HTTPS URL")
 
-    github_repos = tuple(
-        repo.strip() for repo in values["GITHUB_REPOS"].split(",") if repo.strip()
-    )
-    if not github_repos:
-        raise ConfigurationError("GITHUB_REPOS must contain at least one repository")
+    github_repos = tuple(repo.strip() for repo in values["GITHUB_REPOS"].split(","))
+    if any(
+        not repo
+        or repo.count("/") != 1
+        or not all(repo.split("/"))
+        or any(character.isspace() for character in repo)
+        for repo in github_repos
+    ):
+        raise ConfigurationError(
+            "GITHUB_REPOS entries must use owner/repository form"
+        )
 
     try:
         interval_seconds = int(values["COLLECT_INTERVAL_SECONDS"])

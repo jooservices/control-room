@@ -51,6 +51,31 @@ class ConfigTest(unittest.TestCase):
         self.assertNotIn("top-secret-token", repr(config))
         self.assertNotIn("collector@example.test", repr(config))
 
+    def test_rejects_jira_site_without_hostname_or_valid_port(self):
+        for site in ("https://:443", "https://jira.example.test:bad"):
+            with self.subTest(site=site):
+                env = VALID_ENV.replace("https://jira.example.test/", site)
+                with self.assertRaises(ConfigurationError):
+                    load_config(self.write_env(env))
+
+    def test_rejects_malformed_github_repository_entries(self):
+        for repos in (
+            "owner/repo,not-a-repo",
+            "owner/repo,",
+            ",owner/repo",
+            "owner/repo,,other/repo",
+            "owner/,other/repo",
+            "/repo",
+            "owner/repo/extra",
+            "owner /repo",
+        ):
+            with self.subTest(repos=repos):
+                env = VALID_ENV.replace(
+                    "jooservices/ai-flow, jooservices/control-room", repos
+                )
+                with self.assertRaises(ConfigurationError):
+                    load_config(self.write_env(env))
+
     def test_env_example_loads_all_required_settings(self):
         example_path = Path(__file__).parents[1] / ".env.example"
 

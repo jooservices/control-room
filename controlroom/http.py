@@ -4,6 +4,7 @@ import json
 import time
 from typing import Mapping
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 
@@ -30,6 +31,8 @@ def get(
         raise ValueError("retries cannot be negative")
     if backoff < 0:
         raise ValueError("backoff cannot be negative")
+    if urlsplit(url).scheme not in {"http", "https"}:
+        raise ValueError("url must use http or https")
 
     request = Request(url, headers=dict(headers or {}), method="GET")
     for attempt in range(retries + 1):
