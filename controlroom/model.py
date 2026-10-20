@@ -17,7 +17,9 @@ has id, name, model, effort, roles, probe, usable, cooling, runs24h, minutes24h,
 bad24h, runsAll, minutesAll, and badAll. ``timeline`` contains runs, merges,
 and now. Run rows have key, role, ai, start, end, minutes, and ok; merge rows
 have key, number, title, at, url, and project. ``events.list`` rows have at,
-kind, key, and text, with url on merge events.
+kind, key, project, and text, plus a ``link`` object with ``type`` (ticket,
+project, or ai) and ``key``; merge events also have the source pull request
+``url``. Events are newest first and capped at 200.
 
 ``machine`` contains host, cpus, load, mem, disk, uptimeH, containers, services,
 heartbeatAges, redis, code, leases, workersBusy, workersTotal, history, and runs. History rows

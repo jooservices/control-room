@@ -22,7 +22,7 @@
     <section class="card c8"><h2>Projects <small>click a row</small></h2><div class="tablewrap"><table id="ptable"><thead><tr><th><button data-s="name">Project</button></th><th>Jira distribution</th><th><button data-s="prog">Done</button></th><th><button data-s="open">Open</button></th><th>Estimated finish</th><th>Last update</th><th>Links</th></tr></thead><tbody></tbody></table></div><div class="src">Source: Jira (all projects), GitHub, and the flow configuration on the worker machine</div></section>
     <section class="card c4"><h2>AI models <small>worker machine</small></h2><div class="tablewrap"><table id="aitable"><thead><tr><th>AI and model</th><th>State</th><th>24 h runs</th><th>Min</th></tr></thead><tbody></tbody></table></div><div class="src" id="ainote"></div></section>
     <section class="card c4"><h2>Machine <small id="machine"></small></h2><div class="gauges" id="gauges"></div><svg class="spark" id="spark" viewBox="0 0 300 54" preserveAspectRatio="none" role="img" aria-label="Load and memory over time"></svg><dl class="kvs" id="mkv"></dl></section>
-    <section class="card c8"><h2>Events <small>last 24 hours, newest first</small><span class="chips" id="chips"><button data-f="all" aria-pressed="true">All</button><button data-f="status" aria-pressed="false">Status</button><button data-f="run" aria-pressed="false">AI runs</button><button data-f="merge" aria-pressed="false">Merges</button></span></h2><div class="feed" id="feed"></div><div class="src">Source: Jira changelog, the usage log, GitHub</div></section>
+    <section class="card c8"><h2>Events <small>last 24 hours · newest first · up to 200</small></h2><div class="event-controls"><label class="event-project-filter" for="event-project">Project<select id="event-project" aria-label="Filter events by project"><option value="all">All projects</option></select></label><div class="chips" id="chips" role="group" aria-label="Filter events by kind"><button type="button" data-f="all" aria-pressed="true">All</button><button type="button" data-f="status" aria-pressed="false">Status</button><button type="button" data-f="run" aria-pressed="false">AI runs</button><button type="button" data-f="merge" aria-pressed="false">Merges</button></div></div><div class="feed" id="feed" aria-live="polite"></div><div class="src">Source: Jira changelog, the usage log, GitHub</div></section>
   </div>
 </div>
 <footer id="collector-footer">
@@ -30,7 +30,7 @@
   <span id="collector-version">version …</span>
 </footer>
 <div class="scrim" id="scrim"></div>
-<aside class="drawer" id="drawer" aria-live="polite"></aside>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title" aria-hidden="true" inert tabindex="-1"></aside>
 <script src="lib.js"></script>
 <script src="app.js"></script>
 <script src="footer.js"></script>
