@@ -9,21 +9,12 @@ import copy
 import datetime as dt
 from typing import Mapping
 
-from controlroom.model import empty_snapshot
+from controlroom.analytics import eta
+from controlroom.model import FLOW_STATUSES, HOLD_LABEL, empty_snapshot
 
 SOURCES = ("jira", "github", "machine")
 
 # Statuses that count as in flight (same list as the prototype collector).
-FLOW_STATUSES = (
-    "To Do",
-    "In Progress",
-    "In Review",
-    "Review passed",
-    "In QA",
-    "Human review",
-    "Ready to merge",
-    "Blocked",
-)
 MAX_EVENTS = 200
 
 # AI agents shown on the page: id -> (name, model, effort, roles). Same table
@@ -119,6 +110,7 @@ def assemble(
     if "machine" in good:
         _apply_ai(snapshot, good["machine"])
     _apply_machine(snapshot, good, machine_history)
+    _apply_project_etas(snapshot, good, flow_projects)
     _apply_timeline(snapshot, good, flow_projects, now, epoch)
     _apply_events(snapshot, good, now)
 
@@ -206,9 +198,6 @@ def _apply_flow(snapshot, good, flow_projects, now) -> None:
             for pr in good["github"]["projects"].get(key, {}).get("mergedPRs", [])
             if _within(pr.get("mergedAt"), now, 86400)
         )
-
-
-HOLD_LABEL = "aiflow-hold"
 
 
 def _apply_inflight(snapshot, good, flow_projects) -> None:
@@ -371,6 +360,39 @@ def _apply_machine(snapshot, good, machine_history) -> None:
         for data in good["github"]["projects"].values():
             runs.extend(data["ciRuns"])
         machine["runs"] = runs[:8]
+
+
+def _apply_project_etas(snapshot, good, flow_projects) -> None:
+    """Attach project and epic estimates after Jira and worker data are joined."""
+    if "jira" not in good:
+        return
+
+    workers = snapshot["machine"].get("workersTotal")
+    flow_keys = set(flow_projects)
+    for project in snapshot["projects"]["list"]:
+        in_flow = project["key"] in flow_keys
+        project_samples = project.pop("_etaSamples", [])
+        project_remaining = project.pop("_etaRemaining", 0)
+        project_excluded = project.pop("_etaExcluded", [])
+        cycle_cache = project.pop("_etaCycleCache", {})
+        project["eta"] = None
+        project["etaSamples"] = len(project_samples) if in_flow else 0
+        project["etaExcluded"] = project_excluded if in_flow else []
+        if in_flow:
+            project["etaCycleCache"] = cycle_cache
+            project["eta"] = eta(project_remaining, project_samples, workers)
+        else:
+            project.pop("etaCycleCache", None)
+
+        for epic in project.get("epics", []):
+            samples = epic.pop("_etaSamples", [])
+            remaining = epic.pop("_etaRemaining", 0)
+            excluded = epic.pop("_etaExcluded", [])
+            epic["eta"] = None
+            epic["etaSamples"] = len(samples) if in_flow else 0
+            epic["etaExcluded"] = excluded if in_flow else []
+            if in_flow:
+                epic["eta"] = eta(remaining, samples, workers)
 
 
 def _apply_timeline(snapshot, good, flow_projects, now, epoch) -> None:

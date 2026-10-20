@@ -19,10 +19,19 @@ EPOCH = int(NOW.timestamp())
 def jira_result():
     row = {
         "key": "JOOCR", "name": "Control Room", "repo": "control-room", "board": None,
-        "total": 4, "counts": {"Done": 1, "To Do": 2, "Epic": 1},
-        "epics": [{"key": "JOOCR-1", "summary": "e", "status": "Epic", "children": 3, "done": 1}],
+        "total": 6, "counts": {"Done": 1, "To Do": 2, "Epic": 1, "Blocked": 1, "Human review": 1},
+        "epics": [{
+            "key": "JOOCR-1", "summary": "e", "status": "Epic", "children": 5, "done": 1,
+            "_etaSamples": [10, 20, 30, 40, 50], "_etaRemaining": 2,
+            "_etaExcluded": [{"key": "JOOCR-8", "summary": "wait", "status": "Human review"}],
+        }],
         "active": [], "recent": [], "doneLast24h": 1, "mergedPRs": [], "openPRs": [],
         "lastUpdate": "2026-10-20T11:00", "onFlow": True,
+        "_etaSamples": [1, 2, 3, 4, 5], "_etaRemaining": 2,
+        "_etaExcluded": [
+            {"key": "JOOCR-6", "summary": "blocked", "status": "Blocked"},
+            {"key": "JOOCR-8", "summary": "waiting", "status": "Human review"},
+        ],
     }
     event = {"at": "2026-10-20T11:00:00Z", "kind": "status", "key": "JOOCR-5", "text": "A → B"}
     return {"list": [row]}, [event]
@@ -47,8 +56,9 @@ def machine_result():
     return {
         "now": EPOCH, "hb": {"hb:w": 3}, "leases": {"JOOCR-5": "x"}, "probe": {"wsl:Claude": "ok"},
         "cooldown": {}, "load": [0.5, 0.4, 0.3], "cpus": 8, "mem": {"total": 16.0, "avail": 6.0},
-        "disk": {"total": 10}, "uptime_h": 5.0, "containers": 2, "services": {"s": "active"},
+        "disk": {"total": 10}, "uptime_h": 5.0, "containers": 2,
         "code": "abc", "flowProjects": ["JOOCR"], "host": "wsl", "redis": None,
+        "services": {"aiflow-work@1.service": "active", "aiflow-work@2.service": "active"},
         "usage": parse_usage_log(
             {
                 f"usage:JOOCR-5:Claude:{EPOCH - 600}": json.dumps(
@@ -84,6 +94,38 @@ class WorkerTotalTests(unittest.TestCase):
         self.assertEqual(_worker_total(services), 2)
 
 
+class CollectSourcesTest(unittest.TestCase):
+    def test_previous_cycle_cache_is_passed_to_jira_collection(self):
+        config = Config(
+            jira_site="https://jira.example",
+            jira_user="fixture-user",
+            jira_token="fixture-token",
+            github_repos=(),
+            data_dir=Path("/tmp/control-room-test"),
+            interval_seconds=30,
+        )
+        previous = {
+            "projects": {
+                "list": [{"key": "DEMO", "etaCycleCache": {"DEMO-1": 42.0}}]
+            }
+        }
+        with patch.object(
+            collector.machine, "collect", return_value={"flowProjects": ["DEMO"]}
+        ), patch.object(
+            collector.jira, "collect_jira", return_value=({"list": []}, [])
+        ) as collect_jira, patch.object(
+            collector.github, "collect", return_value={"projects": {}, "error": None}
+        ):
+            collector.collect_sources(config, previous, NOW)
+
+        collect_jira.assert_called_once_with(
+            config,
+            ["DEMO"],
+            now=NOW,
+            cycle_cache_by_project={"DEMO": {"DEMO-1": 42.0}},
+        )
+
+
 class AssembleTest(unittest.TestCase):
     def test_lifetime_usage_totals_are_unknown_not_truncated(self):
         results = all_results()
@@ -107,15 +149,25 @@ class AssembleTest(unittest.TestCase):
         row = snapshot["projects"]["list"][0]
         self.assertEqual(row["mergedPRs"][0]["number"], 7)
         self.assertEqual(row["openPRs"][0]["number"], 8)
+        self.assertEqual(row["eta"], {"low": 2.0, "middle": 3.0, "high": 4.0})
+        self.assertEqual(row["etaSamples"], 5)
+        self.assertEqual([item["status"] for item in row["etaExcluded"]], ["Blocked", "Human review"])
+        epic = row["epics"][0]
+        self.assertEqual(epic["eta"], {"low": 20.0, "middle": 30.0, "high": 40.0})
+        self.assertEqual(epic["etaSamples"], 5)
+        self.assertEqual(epic["etaExcluded"][0]["status"], "Human review")
         self.assertEqual(snapshot["flow"]["watched"], ["JOOCR"])
-        self.assertEqual(snapshot["flow"]["statusCounts"], {"Done": 1, "To Do": 2})
+        self.assertEqual(
+            snapshot["flow"]["statusCounts"],
+            {"Blocked": 1, "Done": 1, "Human review": 1, "To Do": 2},
+        )
         self.assertEqual(snapshot["flow"]["mergedPRs24h"], 1)
         claude = next(a for a in snapshot["ai"]["agents"] if a["id"] == "claude")
         self.assertEqual((claude["runs24h"], claude["probe"]), (1, "ok"))
         self.assertEqual(snapshot["timeline"]["runs"][0]["start"], EPOCH - 600 - 240)
         self.assertEqual(snapshot["timeline"]["merges"][0]["key"], "JOOCR-5")
         self.assertEqual(snapshot["machine"]["workersBusy"], 1)
-        self.assertIsNone(snapshot["machine"]["workersTotal"])
+        self.assertEqual(snapshot["machine"]["workersTotal"], 2)
         self.assertEqual(snapshot["machine"]["host"], "Workstation")
         self.assertEqual(snapshot["machine"]["runs"][0]["name"], "ci")
         self.assertEqual(
@@ -133,6 +185,20 @@ class AssembleTest(unittest.TestCase):
         merge = events[2]
         self.assertEqual(merge["link"], {"type": "ticket", "key": "JOOCR-5"})
         self.assertEqual(merge["url"], "u")
+
+    def test_only_flow_projects_receive_estimates(self):
+        results = all_results()
+        results["jira"][0]["list"].append({
+            "key": "OTHER", "onFlow": False, "epics": [],
+            "_etaSamples": [1, 2, 3, 4, 5], "_etaRemaining": 2,
+            "_etaExcluded": [],
+        })
+
+        snapshot = assemble(results, None, now=NOW)
+
+        other = next(row for row in snapshot["projects"]["list"] if row["key"] == "OTHER")
+        self.assertIsNone(other["eta"])
+        self.assertEqual(other["etaSamples"], 0)
 
     def test_events_are_newest_first_and_capped_at_200(self):
         results = all_results()

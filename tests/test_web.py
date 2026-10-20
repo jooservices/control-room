@@ -110,13 +110,22 @@ class WebTests(unittest.TestCase):
         self.assertIn(".live.stale i { background: var(--wait)", css)
         self.assertIn(".live.old i { background: var(--blocked)", css)
 
-    def test_source_failures_and_worker_capacity_come_from_the_snapshot(self):
+    def test_source_failures_and_eta_fallback_come_from_the_snapshot(self):
         app = (WEB / "app.js").read_text(encoding="utf-8")
         self.assertIn("DOCS.meta.ok", app)
-        self.assertIn("m.workersTotal", app)
-        self.assertIn("DOCS.machine.workersTotal", app)
+        self.assertIn("item.eta", app)
+        self.assertIn("not enough data (", app)
         self.assertNotIn("/ 2'", app)
         self.assertNotIn("n / 2", app)
+
+    def test_project_and_epic_eta_show_ranges_samples_and_exclusions(self):
+        app = (WEB / "app.js").read_text(encoding="utf-8")
+        self.assertIn("item.eta.low", app)
+        self.assertIn("item.eta.middle", app)
+        self.assertIn("item.eta.high", app)
+        self.assertIn("item.etaSamples", app)
+        self.assertIn("not enough data (", app)
+        self.assertIn("Excluded from ETA", app)
 
     def test_app_generates_no_inline_handlers_and_guards_unknown_totals(self):
         app = (WEB / "app.js").read_text(encoding="utf-8")

@@ -2,8 +2,12 @@
 
 The root has ``version`` plus seven documents. ``projects.list`` contains rows
 with key, name, repo, board, total, counts, epics, active, recent, doneLast24h,
-mergedPRs, openPRs, lastUpdate, and onFlow. Epic rows have key, summary, status,
-children, and done; active ticket rows have key, type, status, priority,
+mergedPRs, openPRs, lastUpdate, onFlow, eta, etaSamples, etaExcluded, and
+etaCycleCache. The cache maps completed ticket keys to observed cycle minutes
+or null when Jira history has no usable cycle; it avoids refetching old history.
+Flow project ETA values contain low, middle, and high minutes; non-flow projects
+have no ETA. Epic rows have key, summary, status, children, done, eta,
+etaSamples, and etaExcluded; active ticket rows have key, type, status, priority,
 summary, parent, and updated; recent rows have key, summary, and closed; merged
 pull request rows have number, title, mergedAt, and url; open pull requests have
 number, title, url, and draft.
@@ -24,8 +28,9 @@ project, or ai) and ``key``; merge events also have the source pull request
 ``machine`` contains host, cpus, load, mem, disk, uptimeH, containers, services,
 heartbeatAges, redis, code, leases, workersBusy, workersTotal, history, and runs. History rows
 have t, load, and mem; CI run rows have name, url, status, and mins. ``meta``
-contains asOf, ok, and flowProjects. These keys match
-``docs/prototype/collect.py`` and the prototype page.
+contains asOf, ok, and flowProjects. Existing keys match
+``docs/prototype/collect.py`` and the prototype page; ETA fields extend the
+project and epic rows.
 
 The empty values are schema defaults for a collector to populate; they do not
 represent a successful source read. Flow numbers no source collects (cycle,
@@ -36,6 +41,19 @@ that source has been read successfully.
 
 SNAPSHOT_VERSION = 1
 DOCUMENT_NAMES = ("projects", "flow", "ai", "timeline", "events", "machine", "meta")
+
+FLOW_STATUSES = (
+    "To Do",
+    "In Progress",
+    "In Review",
+    "Review passed",
+    "In QA",
+    "Human review",
+    "Ready to merge",
+    "Blocked",
+)
+ETA_EXCLUDED_STATUSES = ("Blocked", "Human review", "Ready to merge")
+HOLD_LABEL = "aiflow-hold"
 
 
 def empty_snapshot() -> dict[str, object]:

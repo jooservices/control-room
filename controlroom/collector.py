@@ -65,7 +65,30 @@ def collect_sources(
     else:
         old_meta = (previous or {}).get("meta") or {}
         flow_keys = list(old_meta.get("flowProjects") or [])
-    run("jira", lambda: jira.collect_jira(config, flow_keys, now=now))
+    old_project_document = (previous or {}).get("projects")
+    old_projects = (
+        old_project_document.get("list")
+        if isinstance(old_project_document, Mapping)
+        else []
+    )
+    if not isinstance(old_projects, list):
+        old_projects = []
+    cycle_cache = {
+        row["key"]: row["etaCycleCache"]
+        for row in old_projects
+        if isinstance(row, Mapping)
+        and isinstance(row.get("key"), str)
+        and isinstance(row.get("etaCycleCache"), Mapping)
+    }
+    run(
+        "jira",
+        lambda: jira.collect_jira(
+            config,
+            flow_keys,
+            now=now,
+            cycle_cache_by_project=cycle_cache,
+        ),
+    )
     run("github", lambda: github.collect(config.github_project_repos, now=now))
     return results
 
