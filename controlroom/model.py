@@ -29,7 +29,9 @@ contains asOf, ok, and flowProjects. These keys match
 
 The empty values are schema defaults for a collector to populate; they do not
 represent a successful source read. Flow numbers no source collects (cycle,
-doneByAiLast24h, reworkLast24h, qaslot, paused) default to ``None``: unknown.
+doneByAiLast24h, qaslot, paused) default to ``None``: unknown. ``reworkLast24h``
+is derived from Jira status events by the assembler and stays ``None`` until
+that source has been read successfully.
 """
 
 SNAPSHOT_VERSION = 1
