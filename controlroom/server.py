@@ -180,13 +180,14 @@ class Handler(BaseHTTPRequestHandler):
         try:
             while True:
                 version = self._snapshot_version()
+                event = None
                 if version is not None and version != seen:
                     event = self._stream_event()
-                    if event is not None:
-                        seen = version
-                        self.wfile.write(event)
-                        self.wfile.flush()
-                        last_write = time.monotonic()
+                if event is not None:
+                    seen = version
+                    self.wfile.write(event)
+                    self.wfile.flush()
+                    last_write = time.monotonic()
                 elif time.monotonic() - last_write >= self.keepalive_seconds:
                     self.wfile.write(b": keep-alive\n\n")
                     self.wfile.flush()

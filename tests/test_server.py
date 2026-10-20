@@ -208,6 +208,19 @@ class ServerTests(unittest.TestCase):
                 break
         self.assertEqual(lines, ["event: snapshot", 'data: {"version": 2}'])
 
+    def test_stream_keeps_alive_while_changed_snapshot_stays_malformed(self):
+        connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        self.addCleanup(connection.close)
+        connection.request("GET", "/api/stream")
+        response = connection.getresponse()
+        self.assertEqual(self.read_event(response),
+                         ["event: snapshot", 'data: {"version": 1}'])
+        self.snapshot.write_text("not json", encoding="utf-8")
+        later = time.time() + 5
+        os.utime(self.snapshot, (later, later))
+        self.assertEqual(self.read_event(response), [": keep-alive"])
+        self.assertEqual(self.read_event(response), [": keep-alive"])
+
     def test_lan_address_is_not_wildcard(self):
         self.assertNotEqual(lan_address(), "0.0.0.0")
 
