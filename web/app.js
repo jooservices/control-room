@@ -42,7 +42,7 @@
     const items = [
       ['Working now', working + (m.workersTotal ? ' / ' + m.workersTotal : ''), working ? 'AI steps holding a worker' : 'workers idle', 'var(--run)', ['machine']],
       ['In the flow', inf.filter(t => t.status !== 'Blocked').length, 'To Do through Ready to merge', 'var(--todo)', ['jira', 'machine']],
-      ['Waiting for owner', waiting, by('Human review') + by('Ready to merge') + ' approval · ' + by('Blocked') + ' blocked', 'var(--human)', ['jira']],
+      ['Waiting for owner', waiting, by('Human review') + by('Ready to merge') + ' approval · ' + by('Blocked') + ' blocked', 'var(--human)', ['jira', 'machine']],
       ['Done, 24 hours', f.doneLast24h, f.doneByAiLast24h + ' worked by an AI, the rest closed by hand', 'var(--done)', ['jira', 'machine']],
       ['Merged PRs, 24 hours', f.mergedPRs24h, f.watched.join(' and ') + ' repositories', 'var(--done)', ['github', 'machine']],
       ['Typical time', f.cycle.p50 == null ? '–' : fmtMin(f.cycle.p50), 'In Progress to Done, ' + f.cycle.n + ' tickets (' + fmtMin(f.cycle.p25) + ' to ' + fmtMin(f.cycle.p75) + ')', 'var(--accent)', ['jira']],

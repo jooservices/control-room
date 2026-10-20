@@ -166,6 +166,32 @@ class WebTests(unittest.TestCase):
         cards = re.findall(r'<section class="card [^"]*" data-src="([^"]+)"><h2>[^<]*<span class="stale-tag" hidden>stale</span>', html)
         self.assertEqual(len(cards), 6, "every card names its sources and has a text stale tag")
         self.assertEqual({s for c in cards for s in c.split()}, {"jira", "github", "machine"})
+        by_title = {
+            t: set(src.split())
+            for src, t in re.findall(r'<section class="card [^"]*" data-src="([^"]+)"><h2>([^<]*?) <span class="stale-tag"', html)
+        }
+        self.assertEqual(by_title, {
+            "AI runs": {"machine", "github"},
+            "Tickets now": {"jira", "machine"},  # flow tickets depend on the machine-selected flowProjects
+            "Projects": {"jira", "github", "machine"},
+            "AI models": {"machine"},
+            "Machine": {"machine"},
+            "Events": {"jira", "github", "machine"},
+        })
+        kpis = {
+            label: set(re.findall(r"'(jira|github|machine)'", srcs))
+            for label, srcs in re.findall(r"\['([^']+)', .*?, \[((?:'[a-z]+',? ?)+)\]\]", app)
+        }
+        self.assertEqual(kpis, {
+            "Working now": {"machine"},
+            "In the flow": {"jira", "machine"},
+            "Waiting for owner": {"jira", "machine"},
+            "Done, 24 hours": {"jira", "machine"},
+            "Merged PRs, 24 hours": {"github", "machine"},
+            "Typical time": {"jira"},
+            "Rework, 24 hours": {"jira"},
+            "Machine load": {"machine"},
+        })
 
     def test_keyboard_and_phone_hooks(self):
         app = (WEB / "app.js").read_text(encoding="utf-8")
