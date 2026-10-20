@@ -199,7 +199,7 @@ class FlowStateTest(unittest.TestCase):
 
     def test_uncollected_flow_fields_are_unknown_not_zero(self):
         flow = assemble(self.results_with_active(), None, now=NOW)["flow"]
-        for name in ("reworkLast24h", "paused", "qaslot"):
+        for name in ("paused", "qaslot"):
             self.assertIsNone(flow[name])
         self.assertIsNone(flow["cycle"]["n"])
 
@@ -266,7 +266,20 @@ class HistoryTest(unittest.TestCase):
         full = snapshot_samples(assemble(all_results(), None, now=NOW))
         self.assertEqual(full["project.JOOCR.done"], 1.0)
         self.assertTrue([m for m in full if m.startswith("ai.") and m.endswith(".minutes24h")])
-        self.assertNotIn("flow.rework24h", full)  # unknown (None) is not recorded
+        self.assertEqual(full["flow.rework24h"], 0.0)
+
+    def test_rework_counts_tickets_sent_back_to_todo(self):
+        results = all_results()
+        at = "2026-10-20T11:00:00Z"
+        results["jira"][1].extend([
+            {"at": at, "kind": "status", "key": "JOOCR-6", "text": "In Review → To Do"},
+            {"at": at, "kind": "status", "key": "JOOCR-6", "text": "QA → To Do"},
+            {"at": at, "kind": "status", "key": "JOOCR-7", "text": " → To Do"},
+            {"at": "2026-10-10T11:00:00Z", "kind": "status", "key": "JOOCR-8", "text": "QA → To Do"},
+        ])
+        snapshot = assemble(results, None, now=NOW)
+        self.assertEqual(snapshot["flow"]["reworkLast24h"], 1)
+        self.assertEqual(snapshot_samples(snapshot)["flow.rework24h"], 1.0)
 
     def test_rework_is_sampled_when_known(self):
         snapshot = assemble(all_results(), None, now=NOW)

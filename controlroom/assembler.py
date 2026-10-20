@@ -189,6 +189,16 @@ def _apply_flow(snapshot, good, flow_projects, now) -> None:
                 counts[epic["status"]] = counts.get(epic["status"], 0) - 1
         flow["statusCounts"] = {k: v for k, v in sorted(counts.items()) if v > 0}
         flow["doneLast24h"] = done
+        flow["reworkLast24h"] = len(
+            {
+                event["key"]
+                for event in good["jira"][1]
+                if event.get("kind") == "status"
+                and event["text"].rsplit("→", 1)[-1].strip() == "To Do"
+                and event["text"].split("→", 1)[0].strip() not in ("", "To Do")
+                and _within(event.get("at"), now, 86400)
+            }
+        )
     if "github" in good:
         flow["mergedPRs24h"] = sum(
             1
