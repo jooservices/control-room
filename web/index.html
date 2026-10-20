@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Flow Control Room</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Flow Control Room</h1><span class="live" id="live"><i></i><span id="liveText">loading</span></span>
+    <span class="sp"></span>
+    <div class="seg"><button id="theme">Theme</button></div>
+  </header>
+  <section class="kpis" id="kpis" aria-label="Key numbers"></section>
+  <div class="grid">
+    <section class="card c8"><h2>AI runs <small id="tlnote">last 6 hours · click a bar</small></h2><div class="tlwrap"><svg class="tl" id="tl" viewBox="0 0 1000 220" preserveAspectRatio="none" role="img" aria-label="Timeline of the AI runs"></svg></div><div class="legend" id="legend"></div><div class="src">Source: the worker machine usage log and GitHub merges</div></section>
+    <section class="card c4"><h2>Tickets now <small>Jira</small></h2><div class="fun" id="fun"></div><div class="src" id="funnote"></div></section>
+    <section class="card c8"><h2>Projects <small>click a row</small></h2><div class="tablewrap"><table id="ptable"><thead><tr><th><button data-s="name">Project</button></th><th>Jira distribution</th><th><button data-s="prog">Done</button></th><th><button data-s="open">Open</button></th><th>Estimated finish</th><th>Last update</th><th>Links</th></tr></thead><tbody></tbody></table></div><div class="src">Source: Jira (all projects), GitHub, and the flow configuration on the worker machine</div></section>
+    <section class="card c4"><h2>AI models <small>worker machine</small></h2><div class="tablewrap"><table id="aitable"><thead><tr><th>AI and model</th><th>State</th><th>24 h runs</th><th>Min</th></tr></thead><tbody></tbody></table></div><div class="src" id="ainote"></div></section>
+    <section class="card c4"><h2>Machine <small id="machine"></small></h2><div class="gauges" id="gauges"></div><svg class="spark" id="spark" viewBox="0 0 300 54" preserveAspectRatio="none" role="img" aria-label="Load and memory over time"></svg><dl class="kvs" id="mkv"></dl></section>
+    <section class="card c8"><h2>Events <small>last 24 hours, newest first</small><span class="chips" id="chips"><button data-f="all" aria-pressed="true">All</button><button data-f="status" aria-pressed="false">Status</button><button data-f="run" aria-pressed="false">AI runs</button><button data-f="merge" aria-pressed="false">Merges</button></span></h2><div class="feed" id="feed"></div><div class="src">Source: Jira changelog, the usage log, GitHub</div></section>
+  </div>
+</div>
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-live="polite"></aside>
+<script src="lib.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
