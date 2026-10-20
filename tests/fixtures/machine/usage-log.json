@@ -1,0 +1,8 @@
+{
+  "usage:JAIF-12:Codex:1999999999": "{\"ai\": \"Codex\", \"role\": \"developer\", \"minutes\": 3.5, \"why\": \"ok\"}",
+  "usage:JOOCR-4:Claude:1999913600": "{\"ai\": \"Claude\", \"role\": \"reviewer\", \"minutes\": 2, \"why\": \"ok\"}",
+  "usage:JAIF-8:Codex:1999913599": "{\"ai\": \"Codex\", \"role\": \"developer\", \"minutes\": 1, \"why\": \"ok\"}",
+  "usage:JAIF-9:Codex:2000000001": "{\"ai\": \"Codex\", \"role\": \"developer\", \"minutes\": 1, \"why\": \"ok\"}",
+  "usage:JAIF-10:Codex:1999999998": "{invalid json",
+  "usage:JAIF-11:Codex:invalid": "{\"ai\": \"Codex\"}"
+}
